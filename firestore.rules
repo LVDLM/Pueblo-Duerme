@@ -1,0 +1,152 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definitions
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    function getGame(gameId) {
+      let path = /databases/$(database)/documents/games/$(gameId);
+      return exists(path) ? get(path).data : null;
+    }
+
+    function isModerator(gameId) {
+      let game = getGame(gameId);
+      return isSignedIn() && game != null && game.moderatorId == request.auth.uid;
+    }
+
+    function getSecret(gameId, playerId) {
+      let path = /databases/$(database)/documents/games/$(gameId)/players/$(playerId)/secret/data;
+      return exists(path) ? get(path).data : null;
+    }
+
+    // Pillar 2: Validation Blueprints
+    function isValidGame(data) {
+      return data.lobbyCode is string && data.lobbyCode.size() <= 10
+        && data.status in ['waiting', 'playing', 'ended']
+        && data.phase in ['lobby', 'night_start', 'cupid_turn', 'police_turn', 'werewolves_turn', 'witch_turn', 'day_reveal', 'day_vote']
+        && data.moderatorId is string
+        && data.createdAt is number
+        && data.updatedAt is number
+        && (data.get('narration', '') is string)
+        && (data.get('nightTargets', {}) is map)
+        && (data.get('lastStartTime', 0) is number)
+        && (data.get('winner', null) == null || data.get('winner', '') is string);
+    }
+
+    function isValidPlayer(data) {
+      return data.uid is string && data.uid.size() <= 64
+        && data.displayName is string && data.displayName.size() <= 50
+        && data.isAlive is bool
+        && data.isModerator is bool
+        && (data.get('joinedAt', 0) is number)
+        && (data.get('vote', null) == null || data.get('vote', '') is string);
+    }
+
+    function isValidSecret(data) {
+      return data.role in ['villager', 'werewolf', 'witch', 'cupid', 'police']
+        && data.isEnamorado is bool
+        && (data.get('loverId', '') is string);
+    }
+
+    function isValidMessage(data, gameId) {
+      return (data.senderId == request.auth.uid || isModerator(gameId))
+        && data.senderName is string && data.senderName.size() <= 100
+        && data.text is string && data.text.size() <= 1000
+        && data.timestamp is number
+        && data.type in ['public', 'werewolf'];
+    }
+
+    // 1. Game Session
+    match /games/{gameId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() 
+        && isValidGame(incoming())
+        && incoming().moderatorId == request.auth.uid
+        && incoming().status == 'waiting'
+        && incoming().phase == 'lobby';
+      
+      allow update: if isModerator(gameId) || (
+        isSignedIn() && isValidGame(incoming()) && (
+          // Action-Based Updates for Players
+          incoming().moderatorId == existing().moderatorId && 
+          incoming().lobbyCode == existing().lobbyCode && 
+          incoming().createdAt == existing().createdAt && 
+          (
+            // Action: Werewolf Kill
+            (existing().phase == 'werewolves_turn' 
+             && getSecret(gameId, request.auth.uid).role == 'werewolf'
+             && incoming().diff(existing()).affectedKeys().hasOnly(['nightTargets', 'updatedAt']))
+            ||
+            // Action: Witch Heal/Kill
+            (existing().phase == 'witch_turn'
+             && getSecret(gameId, request.auth.uid).role == 'witch'
+             && incoming().diff(existing()).affectedKeys().hasOnly(['nightTargets', 'updatedAt']))
+            ||
+            // Action: Cupid Set Couples
+            (existing().phase == 'cupid_turn'
+             && getSecret(gameId, request.auth.uid).role == 'cupid'
+             && incoming().diff(existing()).affectedKeys().hasOnly(['nightTargets', 'updatedAt']))
+          )
+        )
+      );
+    }
+
+    // 2. Players
+    match /games/{gameId}/players/{playerId} {
+      allow read: if isSignedIn();
+      allow create: if (isOwner(playerId) || isModerator(gameId)) 
+        && isValidPlayer(incoming())
+        && getGame(gameId) != null
+        && getGame(gameId).status == 'waiting';
+      
+      allow update: if isModerator(gameId) || (
+        isSignedIn() && isValidPlayer(incoming()) && isOwner(playerId) && incoming().diff(existing()).affectedKeys().hasOnly(['vote'])
+      );
+    }
+
+    // 3. Player Secret Data
+    match /games/{gameId}/players/{playerId}/secret/data {
+      allow read: if isOwner(playerId) 
+        || isModerator(gameId)
+        || (getGame(gameId).status == 'ended')
+        || (isSignedIn() && getGame(gameId).phase == 'police_turn' && getSecret(gameId, request.auth.uid).role == 'police');
+      
+      allow create: if (isOwner(playerId) || isModerator(gameId)) && isValidSecret(incoming());
+      allow update: if isModerator(gameId) || (
+        isSignedIn() && isValidSecret(incoming()) && isOwner(playerId) && incoming().role == existing().role
+      );
+      allow delete: if isModerator(gameId);
+    }
+
+    // 4. Messages (Hardened)
+    match /games/{gameId}/messages/{messageId} {
+      allow get, list: if isSignedIn() && (
+        resource.data.type == 'public' 
+        || isModerator(gameId)
+        || (getSecret(gameId, request.auth.uid).role == 'werewolf')
+      );
+      
+      allow create: if isSignedIn() && isValidMessage(incoming(), gameId) && (
+        incoming().type == 'public'
+        || (incoming().type == 'werewolf' && getSecret(gameId, request.auth.uid).role == 'werewolf')
+      );
+      
+      allow update: if false; 
+      allow delete: if isModerator(gameId);
+    }
+
+    // 5. Connection Test
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}

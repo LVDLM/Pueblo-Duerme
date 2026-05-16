@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "Game": {
+      "title": "Game",
+      "description": "The main game session state.",
+      "type": "object",
+      "properties": {
+        "lobbyCode": { "type": "string" },
+        "status": { "type": "string", "enum": ["waiting", "playing", "ended"] },
+        "phase": { "type": "string", "enum": ["lobby", "night_start", "cupid_turn", "werewolves_turn", "witch_turn", "day_reveal", "day_vote"] },
+        "narration": { "type": "string" },
+        "moderatorId": { "type": "string" },
+        "winner": { "type": "string" },
+        "nightTargets": {
+          "type": "object",
+          "properties": {
+            "werewolfTarget": { "type": "string" },
+            "witchHeal": { "type": "boolean" },
+            "witchKill": { "type": "string" },
+            "cupidCouples": { "type": "array" }
+          }
+        },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["lobbyCode", "status", "phase", "createdAt", "moderatorId"]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "Public info of a player.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "isAlive": { "type": "boolean" },
+        "isModerator": { "type": "boolean" },
+        "vote": { "type": "string" },
+        "joinedAt": { "type": "number" }
+      },
+      "required": ["uid", "displayName", "isAlive", "isModerator"]
+    },
+    "PlayerSecret": {
+      "title": "PlayerSecret",
+      "description": "Private info of a player (role, etc).",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["villager", "werewolf", "witch", "cupid", "police"] },
+        "isEnamorado": { "type": "boolean" },
+        "loverId": { "type": "string" }
+      },
+      "required": ["role", "isEnamorado"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Chat messages (public or private to werewolves).",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "type": { "type": "string", "enum": ["public", "werewolf"] }
+      },
+      "required": ["senderId", "senderName", "text", "timestamp", "type"]
+    }
+  },
+  "firestore": {
+    "/games/{gameId}": {
+      "schema": "Game",
+      "description": "Game session details."
+    },
+    "/games/{gameId}/players/{playerId}": {
+      "schema": "Player",
+      "description": "Public player data."
+    },
+    "/games/{gameId}/players/{playerId}/secret/data": {
+      "schema": "PlayerSecret",
+      "description": "Private player data (identity)."
+    },
+    "/games/{gameId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Chat history."
+    }
+  }
+}
