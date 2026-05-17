@@ -5,8 +5,10 @@ import { doc, updateDoc, setDoc, collection, writeBatch, addDoc, getDoc, getDocs
 import { motion, AnimatePresence } from 'motion/react';
 import { ROLE_IMAGES, LOBO_IMAGES } from '../constants/images';
 import { GamePhase, Role } from '../types/game';
-import { Users, LogOut, MessageSquare, Shield, Moon, Sun, Heart, Skull, Zap, Send } from 'lucide-react';
-import { useState, FormEvent, useEffect, useRef } from 'react';
+import { Users, LogOut, MessageSquare, Shield, Moon, Sun, Heart, Skull, Zap, Send, Bot } from 'lucide-react';
+import { useState, FormEvent, useEffect, useRef, useMemo } from 'react';
+// @ts-ignore
+import { useAIAgents } from '../ai/hooks/useAIAgents';
 
 interface GameViewProps {
   gameId: string;
@@ -25,10 +27,12 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
   const { game, players, messages, mySecret, allSecrets, loading } = useGameData(gameId, user.uid);
   const [chatMsg, setChatMsg] = useState('');
   const [showRole, setShowRole] = useState(false);
+  const [isAddingBot, setIsAddingBot] = useState(false);
   const [devPeekSecrets, setDevPeekSecrets] = useState(false);
   const [isDevNarratorMode, setIsDevNarratorMode] = useState(true);
   const [impersonateId, setImpersonateId] = useState<string | null>(null);
   const [isUpdatingPhase, setIsUpdatingPhase] = useState(false);
+  const [isAITalking, setIsAITalking] = useState(false);
   const [showRoleIntro, setShowRoleIntro] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -43,7 +47,150 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
   const activeSecret = (game?.lobbyCode === 'DEV1' && impersonateId) ? allSecrets[impersonateId] : mySecret;
   const isImpersonating = !!(game?.lobbyCode === 'DEV1' && impersonateId);
 
-  const sendMsg = async (e?: FormEvent, customText?: string, phaseOverride?: GamePhase) => {
+  const isMod = game?.moderatorId === user.uid;
+  const me = players.find(p => p.uid === user.uid);
+  const hasAutoReset = useRef(false);
+  const lastAIPhaseRun = useRef<string>('');
+  const isMyTurn = (game?.phase === 'cupid_turn' && activeSecret?.role === 'cupid') ||
+                   (game?.phase === 'werewolves_turn' && activeSecret?.role === 'werewolf') ||
+                   (game?.phase === 'witch_turn' && activeSecret?.role === 'witch');
+
+  // AI Integration
+  const aiBotsConfig = useMemo(() => players.filter(p => p.isBot).map(p => ({
+    id: p.uid,
+    name: p.displayName,
+    role: allSecrets[p.uid]?.role || 'villager'
+  })), [players, allSecrets]);
+
+  const { resolveNight, resolveVotes, generateAccusations, broadcastEvent, killAgent, reset } = useAIAgents(aiBotsConfig);
+
+  // AI Auto-Turns (Moderator Logic)
+  useEffect(() => {
+    if (!isMod || game?.status !== 'playing' || isUpdatingPhase || !game) return;
+    if (lastAIPhaseRun.current === game.phase) return;
+
+    const gameDataAsState = {
+       players: players.map(p => ({ id: p.uid, name: p.displayName, role: allSecrets[p.uid]?.role || 'villager' })),
+       deadPlayers: players.filter(p => !p.isAlive).map(p => p.uid),
+       phase: game.phase,
+       round: 1, // simplified
+       currentNightVictimId: game.nightTargets?.werewolfTarget || null,
+       loversIds: game.nightTargets?.cupidCouples || [],
+       currentVotes: players.reduce((acc, p) => { if(p.vote) acc[p.vote] = (acc[p.vote] || 0) + 1; return acc; }, {} as any),
+       witchHealUsed: game.witchHealUsed,
+       witchPoisonUsed: game.witchPoisonUsed
+    };
+
+    const runAI = async () => {
+      // 1. Accusations in day_vote (appearing after narrator message)
+      if (game.phase === 'day_vote') {
+        // Delay to allow narrator message to appear first
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        setIsAITalking(true);
+        const accusations = generateAccusations(gameDataAsState);
+        for (const acc of accusations) {
+           await addDoc(collection(db, `games/${gameId}/messages`), {
+              senderId: acc.agentId,
+              senderName: players.find(p => p.uid === acc.agentId)?.displayName || 'Bot',
+              text: acc.message,
+              timestamp: Date.now(),
+              type: 'public',
+              phase: 'day_vote'
+           });
+           broadcastEvent({ type: 'VOTED_AGAINST', subjectId: acc.agentId, objectId: acc.targetId });
+           // Small delay between each bot message for realism
+           await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        setIsAITalking(false);
+      }
+
+      // 2. Votes in day_vote
+      if (game.phase === 'day_vote') {
+        const aiVotes = resolveVotes(gameDataAsState);
+        const batch = writeBatch(db);
+        let hasChanges = false;
+        
+        // Delay votes to let players read accusations
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        aiVotes.forEach((v: any) => {
+           const p = players.find(pl => pl.uid === v.agentId);
+           if (p && !p.vote) {
+              batch.update(doc(db, `games/${gameId}/players`, v.agentId), { vote: v.votedFor });
+              broadcastEvent({ type: 'VOTED_AGAINST', subjectId: v.agentId, objectId: v.votedFor });
+              hasChanges = true;
+           }
+        });
+        if (hasChanges) await batch.commit();
+      }
+
+      // 3. Night Actions
+      if (game.phase === 'cupid_turn') {
+         const cupid = players.find(p => p.isAlive && allSecrets[p.uid]?.role === 'cupid');
+         if (cupid?.isBot && !game.nightTargets?.cupidCouples?.length) {
+            const actions = resolveNight(gameDataAsState);
+            const cupidAction = actions.find((a: any) => a.type === 'CUPID_CHOOSE');
+            if (cupidAction) {
+               await updateDoc(doc(db, 'games', gameId), {
+                  'nightTargets.cupidCouples': [cupidAction.lover1Id, cupidAction.lover2Id],
+                  updatedAt: Date.now()
+               });
+            }
+         }
+      }
+
+      if (game.phase === 'werewolves_turn') {
+         const aliveWolves = players.filter(p => p.isAlive && allSecrets[p.uid]?.role === 'werewolf');
+         if (aliveWolves.every(w => w.isBot) && !game.nightTargets?.werewolfTarget) {
+            const actions = resolveNight(gameDataAsState);
+            const wolfAction = actions.find((a: any) => a.type === 'WOLF_ATTACK');
+            if (wolfAction) {
+               await updateDoc(doc(db, 'games', gameId), {
+                  'nightTargets.werewolfTarget': wolfAction.targetId,
+                  updatedAt: Date.now()
+               });
+            }
+         }
+      }
+
+      if (game.phase === 'witch_turn') {
+         const witch = players.find(p => p.isAlive && allSecrets[p.uid]?.role === 'witch');
+         if (witch?.isBot && !game.nightTargets?.witchKill && !game.nightTargets?.witchHeal) {
+            const actions = resolveNight(gameDataAsState);
+            const witchAction = actions.find((a: any) => a.type === 'WITCH_ACTION');
+            if (witchAction) {
+               await updateDoc(doc(db, 'games', gameId), {
+                  'nightTargets.witchHeal': witchAction.heal,
+                  'nightTargets.witchKill': witchAction.poisonTargetId || '',
+                  updatedAt: Date.now()
+               });
+            }
+         }
+      }
+    };
+
+    lastAIPhaseRun.current = game.phase;
+    runAI();
+  }, [game?.phase, isMod, players, allSecrets]);
+
+  useEffect(() => {
+    // Auto-reset when entering DEV mode if moderator
+    if (game?.lobbyCode === 'DEV1' && isMod && !hasAutoReset.current) {
+      hasAutoReset.current = true;
+      handleRestartGame();
+    }
+  }, [gameId, isMod, game?.lobbyCode]);
+
+  useEffect(() => {
+    if (isMyTurn && game?.status === 'playing') {
+      setShowRoleIntro(true);
+    } else {
+      setShowRoleIntro(false);
+    }
+  }, [game?.phase, isMyTurn, game?.status]);
+
+  async function sendMsg(e?: FormEvent, customText?: string, phaseOverride?: GamePhase) {
     if (e) e.preventDefault();
     const textToSubmit = customText || chatMsg;
     if (!textToSubmit.trim() || !me) return;
@@ -70,31 +217,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
       phase: phaseOverride || game?.phase
     });
     if (!customText) setChatMsg('');
-  };
-
-  const isMod = game?.moderatorId === user.uid;
-  const me = players.find(p => p.uid === user.uid);
-  const hasAutoReset = useRef(false);
-
-  useEffect(() => {
-    // Auto-reset when entering DEV mode if moderator
-    if (game?.lobbyCode === 'DEV1' && isMod && !hasAutoReset.current) {
-      hasAutoReset.current = true;
-      handleRestartGame();
-    }
-  }, [gameId, isMod, game?.lobbyCode]);
-
-  const isMyTurn = (game?.phase === 'cupid_turn' && activeSecret?.role === 'cupid') ||
-                   (game?.phase === 'werewolves_turn' && activeSecret?.role === 'werewolf') ||
-                   (game?.phase === 'witch_turn' && activeSecret?.role === 'witch');
-
-  useEffect(() => {
-    if (isMyTurn && game?.status === 'playing') {
-      setShowRoleIntro(true);
-    } else {
-      setShowRoleIntro(false);
-    }
-  }, [game?.phase, isMyTurn, game?.status]);
+  }
 
   if (loading || !game) {
     return (
@@ -104,7 +227,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     );
   }
 
-  const startLevel = async () => {
+  async function startLevel() {
     if (!isMod || isUpdatingPhase) return;
     setIsUpdatingPhase(true);
     
@@ -169,6 +292,14 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
       }
     });
 
+    // Reset AI manager with new roles
+    const newAiBots = players.filter(p => p.isBot).map((p, idx) => ({
+      id: p.uid,
+      name: p.displayName,
+      role: roles[idx] // This assumes players and roles are in the same order
+    }));
+    reset(newAiBots);
+
     batch.update(doc(db, 'games', gameId), {
       status: 'playing',
       phase: 'night_start',
@@ -180,14 +311,16 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
         witchKill: '',
         cupidCouples: []
       },
+      witchHealUsed: false,
+      witchPoisonUsed: false,
       updatedAt: now
     });
 
     await batch.commit();
     setIsUpdatingPhase(false);
-  };
+  }
 
-  const updatePhase = async (newPhase: GamePhase, narration: string) => {
+  async function updatePhase(newPhase: GamePhase, narration: string) {
     if (!isMod || isUpdatingPhase) return;
     setIsUpdatingPhase(true);
     try {
@@ -248,16 +381,22 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
          // Track those who will die
          deadIds.forEach(id => {
            batch.update(doc(db, `games/${gameId}/players`, id), { isAlive: false });
+           broadcastEvent({ type: 'INNOCENT_KILLED', objectId: id });
          });
 
          const finalNarration = deadIds.length > 0 ? `¡Tragedia! Han muerto ${deadIds.length} habitante(s).` : '¡Milagro! Nadie ha muerto esta noche.';
 
-         batch.update(doc(db, 'games', gameId), {
+         const gameUpdate: any = {
            phase: newPhase,
            narration: finalNarration,
            lastWakeUpTime: Date.now(),
            updatedAt: Date.now()
-         });
+         };
+
+         if (witchHealed) gameUpdate.witchHealUsed = true;
+         if (witchKilled) gameUpdate.witchPoisonUsed = true;
+
+         batch.update(doc(db, 'games', gameId), gameUpdate);
 
          await batch.commit();
          await sendMsg(undefined, finalNarration, 'day_reveal');
@@ -321,16 +460,18 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     } finally {
       setIsUpdatingPhase(false);
     }
-  };
+  }
 
   const handleWitchAction = async (type: 'heal' | 'kill' | 'pass', targetId?: string) => {
     if (activeSecret?.role !== 'witch') return;
     const update: any = { updatedAt: Date.now() };
     if (type === 'heal') {
+       if (game.witchHealUsed && !game.nightTargets?.witchHeal) return; // Cannot start healing if already used
        // Toggle healing
        update['nightTargets.witchHeal'] = !game.nightTargets?.witchHeal;
     }
     if (type === 'kill') {
+       if (game.witchPoisonUsed && game.nightTargets?.witchKill !== targetId) return; // Cannot start killing if already used
        // Toggle killing the same person
        update['nightTargets.witchKill'] = game.nightTargets?.witchKill === targetId ? '' : targetId;
     }
@@ -356,23 +497,30 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     const alivePlayers = players.filter(p => p.isAlive);
     
     for (const p of alivePlayers) {
-      const snap = await getDoc(doc(db, `games/${gameId}/players/${p.uid}/secret/data`));
-      if (snap.exists()) {
-        const secret = snap.data();
-        if (secret.role === 'werewolf') aliveLobos++;
-        else aliveOthers++;
-      }
+      // Use local state if available for performance, but sync with allSecrets
+      const role = allSecrets[p.uid]?.role || 'villager';
+      if (role === 'werewolf') aliveLobos++;
+      else aliveOthers++;
     }
 
     let winner: 'aldeanos' | 'lobos' | null = null;
-    if (aliveLobos === 0) winner = 'aldeanos';
-    else if (aliveLobos >= aliveOthers) winner = 'lobos';
+    
+    // Condition 1: When all werewolves are dead. Village wins.
+    if (aliveLobos === 0) {
+      winner = 'aldeanos';
+    } 
+    // Condition 2: When two players remain and one is the werewolf. Lobo wins.
+    else if (alivePlayers.length === 2 && aliveLobos >= 1) {
+      winner = 'lobos';
+    }
 
     if (winner) {
       await updateDoc(doc(db, 'games', gameId), {
         status: 'ended',
         winner,
-        narration: winner === 'lobos' ? '¡LOS LOBOS HAN DEVORADO AL PUEBLO!' : '¡EL PUEBLO HA ELIMINADO LA AMENAZA!',
+        narration: winner === 'lobos' 
+          ? '¡LOS LOBOS HAN GANADO! Solo quedan dos supervivientes y la bestia ha reclamado su premio.' 
+          : '¡EL PUEBLO HA GANADO! Todos los lobos han sido exterminados.',
         updatedAt: Date.now()
       });
     }
@@ -434,6 +582,30 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     alert('Juego reiniciado exitosamente.');
   }
 
+  const handleAddBot = async () => {
+    if (!isMod || isAddingBot || game.status !== 'waiting') return;
+    setIsAddingBot(true);
+    try {
+      const botNames = ['🤖 Bot Alfa', '🤖 Bot Beta', '🤖 Bot Gamma', '🤖 Bot Delta', '🤖 Bot Epsilon', '🤖 Bot Zeta'];
+      const existingBots = players.filter(p => p.isBot).length;
+      const botId = `bot_${Date.now()}_${existingBots}`;
+      const name = botNames[existingBots % botNames.length] + ' ' + (Math.floor(existingBots / botNames.length) + 1);
+      
+      await setDoc(doc(db, `games/${gameId}/players`, botId), {
+        uid: botId,
+        displayName: name,
+        isAlive: true,
+        isModerator: false,
+        isBot: true,
+        joinedAt: Date.now()
+      });
+    } catch (error) {
+      console.error("Error adding bot:", error);
+    } finally {
+      setIsAddingBot(false);
+    }
+  };
+
   const handleVerifyAccused = async () => {
     if (!isMod) return;
     
@@ -470,18 +642,31 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     const batch = writeBatch(db);
     batch.update(doc(db, `games/${gameId}/players`, victimId), { isAlive: false });
     
+    broadcastEvent({ 
+      type: role === 'werewolf' ? 'WOLF_REVEALED' : 'INNOCENT_KILLED', 
+      objectId: victimId 
+    });
+
     if (role === 'werewolf') {
       const remainingLobos = players.filter(p => p.uid !== victimId && p.isAlive).filter(p => allSecrets[p.uid]?.role === 'werewolf');
       const isLastLobo = remainingLobos.length === 0;
 
-      batch.update(doc(db, 'games', gameId), {
-        status: 'ended',
-        winner: 'aldeanos',
-        narration: `¡Justicia! El pueblo ha ejecutado a ${victim.displayName}, que era un ${roleName}. ${isLastLobo ? '¡EL PUEBLO HA ELIMINADO LA AMENAZA!' : '¡EL PUEBLO GANA!'}`,
-        updatedAt: Date.now()
-      });
+      if (isLastLobo) {
+        await updateDoc(doc(db, 'games', gameId), {
+          status: 'ended',
+          winner: 'aldeanos',
+          narration: `¡Justicia! El pueblo ha ejecutado a ${victim.displayName}, el último lobo. ¡EL PUEBLO HA ELIMINADO LA AMENAZA!`,
+          updatedAt: Date.now()
+        });
+      } else {
+        await updateDoc(doc(db, 'games', gameId), {
+          phase: 'day_reveal',
+          narration: `¡Justicia! El pueblo ha ejecutado a ${victim.displayName}, que era un ${roleName}. ¡Pero aún quedan otros lobos! Siguiente ronda.`,
+          updatedAt: Date.now()
+        });
+      }
     } else {
-      batch.update(doc(db, 'games', gameId), {
+      await updateDoc(doc(db, 'games', gameId), {
         phase: 'day_reveal',
         narration: `El pueblo ha ejecutado a ${victim.displayName}, pero era un inocente ${roleName}. Siguiente ronda.`,
         updatedAt: Date.now()
@@ -533,8 +718,11 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
       await updateDoc(doc(db, `games/${gameId}/players`, actingPlayer.uid), {
         vote: targetId
       });
+      broadcastEvent({ type: 'VOTED_AGAINST', subjectId: actingPlayer.uid, objectId: targetId });
     }
   };
+
+  // AI Auto-Turns (Moderator Logic) - Moved to top to avoid Rules of Hooks violations
 
   return (
     <div className="bg-slate-950 h-screen flex flex-col p-6 text-slate-200 font-sans overflow-hidden">
@@ -542,7 +730,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
       <header className="flex justify-between items-center mb-6 h-20 bg-slate-900 border border-slate-800 rounded-3xl px-8 shadow-2xl shrink-0">
         <div className="flex items-center gap-4">
           <div className={`h-3 w-3 rounded-full animate-pulse ${game.status === 'playing' ? 'bg-red-600' : 'bg-emerald-500'}`}></div>
-          <h1 className="text-xl font-bold tracking-widest text-white uppercase italic text-center sm:text-left">Pueblo <span className="text-indigo-400">Duerme</span></h1>
+          <h1 className="text-xl font-display font-bold tracking-widest text-white uppercase italic text-center sm:text-left">Pueblo <span className="text-indigo-400">Duerme</span></h1>
         </div>
         
         <div className="flex items-center gap-6">
@@ -580,7 +768,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                           ¡Tu turno ha comenzado!
                        </div>
                     )}
-                    <h3 className="text-2xl md:text-3xl font-black text-white mb-2 leading-tight">
+                    <h3 className="text-2xl md:text-3xl font-display font-black text-white mb-2 leading-tight">
                        {game.narration}
                     </h3>
                   </motion.div>
@@ -605,7 +793,14 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                         {isMe && <span className="bg-indigo-500 text-[8px] font-black px-1.5 py-0.5 rounded-full text-white uppercase">TÚ</span>}
                         {p.uid === impersonateId && <span className="bg-amber-500 text-[8px] font-black px-1.5 py-0.5 rounded-full text-black uppercase">SUPLANTADO</span>}
                         {p.isModerator && <span className="bg-amber-500/10 text-[8px] font-black px-1.5 py-0.5 rounded-full text-amber-500 border border-amber-500/20 uppercase">MOD</span>}
-                        {(activeSecret?.loverId === p.uid || (activeSecret?.role === 'cupid' && game.nightTargets?.cupidCouples?.includes(p.uid))) && <Heart className="w-3.5 h-3.5 text-pink-500 fill-current" />}
+                        <div className="flex items-center gap-1">
+                               {( (isMod && game.nightTargets?.cupidCouples?.includes(p.uid)) || 
+                                  (activeSecret?.loverId === p.uid) || 
+                                  (activeSecret?.role === 'cupid' && game.nightTargets?.cupidCouples?.includes(p.uid))
+                               ) && <Heart className="w-3.5 h-3.5 text-pink-500 fill-current shadow-[0_0_8px_rgba(236,72,153,0.5)]" />}
+                               {isMod && game.nightTargets?.werewolfTarget === p.uid && <Skull className="w-3.5 h-3.5 text-red-500 fill-current animate-pulse mr-1" />}
+                            </div>
+                        
                      </div>
 
                      {/* Voting Indicator */}
@@ -618,7 +813,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                      {/* Target Marker */}
                      {((activeSecret?.role === 'witch' && game.phase === 'witch_turn') || isMod) && game.nightTargets?.werewolfTarget === p.uid && (
                         <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 bg-red-600 text-white text-[8px] font-black px-2 py-0.5 rounded-full border border-red-400 whitespace-nowrap">
-                           OBJETIVO LOBOS
+                           VÍCTIMA LOBOS (NARRADOR)
                         </div>
                      )}
 
@@ -718,7 +913,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                          }`}>
                             {m.senderName} {m.type === 'werewolf' && '🌑'}
                          </span>
-                         <p className={`text-sm break-words leading-relaxed ${isNarrator ? 'text-white font-medium italic' : 'text-slate-300'}`}>
+                         <p className={`text-sm font-chat break-words leading-relaxed ${isNarrator ? 'text-white font-medium italic' : 'text-slate-300'}`}>
                             {m.text}
                          </p>
                       </div>
@@ -726,7 +921,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                  })}
                  <div ref={chatEndRef} />
                  {messages.length === 0 && (
-                    <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800/50 italic text-slate-500 text-xs border-l-4 border-l-amber-500">
+                    <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800/50 italic text-slate-500 text-xs border-l-4 border-l-amber-500 font-chat">
                        "El silencio nocturno es absoluto. Solo el viento murmura entre las casas..."
                     </div>
                  )}
@@ -738,7 +933,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                      value={chatMsg}
                      onChange={(e) => setChatMsg(e.target.value)}
                      placeholder={isDevNarratorMode ? "Habla como Narrador..." : "Susurra algo..."}
-                     className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-600/50 transition-all shadow-xl"
+                     className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-sm font-chat text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-600/50 transition-all shadow-xl"
                    />
                    <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 bg-indigo-600 p-2 rounded-xl text-white hover:bg-indigo-500 transition-all shadow-lg active:scale-90">
                       <Send className="w-4 h-4" />
@@ -762,10 +957,10 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                        <div className="flex items-center gap-2">
                          <button 
                            onClick={() => handleWitchAction('heal')}
-                           disabled={!isMyTurn || !game.nightTargets?.werewolfTarget}
-                           className={`text-[10px] px-3 py-1.5 rounded-xl border font-black uppercase transition-all disabled:opacity-30 ${game.nightTargets?.witchHeal ? 'bg-emerald-600 text-white border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-emerald-900/20 text-emerald-400 border-emerald-800/50 hover:bg-emerald-800/30'}`}
+                           disabled={!isMyTurn || !game.nightTargets?.werewolfTarget || game.witchHealUsed}
+                           className={`text-[10px] px-3 py-1.5 rounded-xl border font-black uppercase transition-all disabled:opacity-30 ${game.nightTargets?.witchHeal ? 'bg-emerald-600 text-white border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : game.witchHealUsed ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-emerald-900/20 text-emerald-400 border-emerald-800/50 hover:bg-emerald-800/30'}`}
                          >
-                            {game.nightTargets?.witchHeal ? 'POCIÓN CURACIÓN USADA' : 'USAR POCIÓN CURACIÓN'}
+                            {game.witchHealUsed ? 'POCIÓN CURACIÓN AGOTADA' : game.nightTargets?.witchHeal ? 'POCIÓN CURACIÓN USADA' : 'USAR POCIÓN CURACIÓN'}
                          </button>
                          {isMyTurn && (
                             <button 
@@ -846,7 +1041,17 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                         {(isDevNarratorMode || game.lobbyCode !== 'DEV1') && (
                           <>
                             {game.status === 'waiting' ? (
-                              <button onClick={startLevel} disabled={players.length < 4} className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase disabled:opacity-50 transition-all font-mono">EMPEZAR</button>
+                              <div className="flex gap-2">
+                                 <button 
+                                   onClick={handleAddBot} 
+                                   disabled={isAddingBot || players.length >= 12} 
+                                   className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl text-[10px] font-black uppercase disabled:opacity-50 transition-all font-mono border border-slate-700 flex items-center gap-2"
+                                 >
+                                   <Bot className="w-4 h-4" />
+                                   {isAddingBot ? 'Añadiendo...' : 'Añadir IA'}
+                                 </button>
+                                 <button onClick={startLevel} disabled={players.length < 4} className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase disabled:opacity-50 transition-all font-mono">EMPEZAR</button>
+                               </div>
                             ) : game.status === 'playing' ? (
                               <div className={`bg-slate-800 p-2 rounded-2xl flex gap-2 border border-slate-700 transition-all ${isUpdatingPhase ? 'opacity-50 pointer-events-none' : ''}`}>
                                 <button 
@@ -892,11 +1097,12 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                                 >
                                   <Users className="w-6 h-6" />
                                 </button>
-                                <button 
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); game.phase === 'day_vote' ? handleVerifyAccused() : checkWin(); }} 
-                                  className="p-3 hover:bg-red-900/20 rounded-xl text-red-500 transition-all border border-transparent hover:border-red-900/30" 
-                                  title={game.phase === 'day_vote' ? "Verificar Acusado" : "Verificar Ganador"}
-                                >
+                                 <button 
+                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); game.phase === 'day_vote' ? handleVerifyAccused() : checkWin(); }} 
+                                   disabled={isAITalking && game.phase === 'day_vote'}
+                                   className={`p-3 rounded-xl transition-all border border-transparent ${isAITalking && game.phase === 'day_vote' ? 'opacity-30 cursor-not-allowed text-slate-500' : 'hover:bg-red-900/20 text-red-500 hover:border-red-900/30'}`} 
+                                   title={game.phase === 'day_vote' ? (isAITalking ? "Bots hablando..." : "Verificar Acusado") : "Verificar Ganador"}
+                                 >
                                   <Zap className="w-6 h-6" />
                                 </button>
                               </div>
@@ -938,7 +1144,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
             className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center text-white p-6 text-center"
           >
              <Moon className="w-24 h-24 mb-8 text-indigo-500 animate-pulse" />
-             <h1 className="text-4xl md:text-6xl font-black italic mb-4 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] uppercase">EL PUEBLO DUERME</h1>
+             <h1 className="text-4xl md:text-6xl font-display font-black italic mb-4 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] uppercase">EL PUEBLO DUERME</h1>
              <p className="text-slate-400 font-bold max-w-md">{game.narration}</p>
           </motion.div>
         )}
@@ -969,7 +1175,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                    {activeSecret?.role === 'werewolf' ? 'LOBO' : activeSecret?.role === 'witch' ? 'BRUJA' : 'CUPIDO'}
                 </div>
              </div>
-             <h1 className="text-4xl md:text-6xl font-black italic mb-4 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] uppercase">
+             <h1 className="text-4xl md:text-6xl font-display font-black italic mb-4 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] uppercase">
                 {activeSecret?.role && (ROLE_INTRO_TITLES[activeSecret.role] || "¡Es tu turno!")}
              </h1>
              <p className="text-indigo-200 font-bold max-w-md text-lg mb-8 uppercase tracking-widest animate-pulse">Toca para actuar</p>
@@ -1048,7 +1254,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                 <div className={`mb-6 inline-flex p-4 rounded-3xl ${game.winner === 'lobos' ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-500'}`}>
                    {game.winner === 'lobos' ? <Skull className="w-16 h-16" /> : <Sun className="w-16 h-16" />}
                 </div>
-                <h1 className="text-5xl font-black italic text-white mb-4 tracking-tighter uppercase leading-none">
+                <h1 className="text-5xl font-display font-black italic text-white mb-4 tracking-tighter uppercase leading-none">
                   ¡PARTIDA <span className={game.winner === 'lobos' ? 'text-red-500' : 'text-emerald-500'}>FINALIZADA</span>!
                 </h1>
                 <p className="text-xl text-slate-300 font-bold mb-8">{game.narration}</p>

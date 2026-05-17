@@ -1,0 +1,1 @@
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); game.phase === 'day_vote' ? handleVerifyAccused() : checkWin(); }} 

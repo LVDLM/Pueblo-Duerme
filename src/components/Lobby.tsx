@@ -48,7 +48,7 @@ export default function Lobby({ onJoin, user }: LobbyProps) {
 
     setIsCreating(true);
     try {
-      const devCode = "DEV1"; // Constant for dev mode
+      const devCode = `DEV-${currentUser.uid.substring(0, 5).toUpperCase()}`; 
       const q = query(collection(db, 'games'), where('lobbyCode', '==', devCode));
       const snap = await getDocs(q);
       
@@ -207,7 +207,7 @@ export default function Lobby({ onJoin, user }: LobbyProps) {
               <Shield className="w-8 h-8 text-indigo-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-black tracking-tighter text-white uppercase italic leading-none">
+              <h1 className="text-3xl font-display font-black tracking-tighter text-white uppercase italic leading-none">
                 PUEBLO <span className="text-indigo-500">DUERME</span>
               </h1>
               <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">Multiplayer Mystery Game</p>

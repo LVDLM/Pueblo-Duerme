@@ -26,6 +26,8 @@ export interface Game {
   moderatorId: string;
   winner?: 'aldeanos' | 'lobos';
   nightTargets?: NightTargets;
+  witchHealUsed?: boolean;
+  witchPoisonUsed?: boolean;
   lastStartTime?: number;
   lastSleepTime?: number;
   lastWakeUpTime?: number;
@@ -39,6 +41,7 @@ export interface Player {
   displayName: string;
   isAlive: boolean;
   isModerator: boolean;
+  isBot?: boolean;
   vote?: string;
   joinedAt: number;
 }

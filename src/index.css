@@ -1,9 +1,35 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;900&display=swap');
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'La Meute Furieuse';
+  src: url('./fonts/La Meute Furieuse.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Sticky Puding';
+  src: url('./fonts/Sticky Puding.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KG Perfect Penmanship';
+  src: url('./fonts/KGPerfectPenmanship.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
-  --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Sticky Puding", "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "La Meute Furieuse", "Outfit", sans-serif;
+  --font-chat: "KG Perfect Penmanship", sans-serif;
 }
 
 @layer utilities {

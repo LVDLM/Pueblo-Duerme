@@ -8,6 +8,12 @@ service cloud.firestore {
 
     // Phase 3: Primitive Definitions
     function isSignedIn() { return request.auth != null; }
+    function isVerified() { 
+      return isSignedIn() && (
+        request.auth.token.email_verified == true || 
+        request.auth.token.firebase.sign_in_provider == 'anonymous'
+      );
+    }
     function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
@@ -68,7 +74,7 @@ service cloud.firestore {
     // 1. Game Session
     match /games/{gameId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() 
+      allow create: if isVerified() 
         && isValidGame(incoming())
         && incoming().moderatorId == request.auth.uid
         && incoming().status == 'waiting'
@@ -109,7 +115,12 @@ service cloud.firestore {
         && getGame(gameId).status == 'waiting';
       
       allow update: if isModerator(gameId) || (
-        isSignedIn() && isValidPlayer(incoming()) && isOwner(playerId) && incoming().diff(existing()).affectedKeys().hasOnly(['vote'])
+        isOwner(playerId) && isValidPlayer(incoming()) && (
+          // During waiting phase, allow updating profile info
+          (getGame(gameId).status == 'waiting' && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'isModerator', 'joinedAt', 'vote'])) ||
+          // During game, only allow voting
+          (incoming().diff(existing()).affectedKeys().hasOnly(['vote']))
+        )
       );
     }
 
