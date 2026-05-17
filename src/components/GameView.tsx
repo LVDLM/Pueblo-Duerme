@@ -23,6 +23,17 @@ const ROLE_INTRO_TITLES: Record<Role, string> = {
   villager: "El pueblo duerme plácidamente"
 };
 
+const PHASE_LABELS: Record<GamePhase, string> = {
+  lobby: 'Entrada',
+  night_start: 'Sueño',
+  cupid_turn: 'Cupido',
+  werewolves_turn: 'Lobos',
+  witch_turn: 'Bruja',
+  day_reveal: 'Despertar',
+  day_vote: 'Votación',
+  ended: 'Comprobar'
+};
+
 export default function GameView({ gameId, user, onLeave }: GameViewProps) {
   const { game, players, messages, mySecret, allSecrets, loading } = useGameData(gameId, user.uid);
   const [chatMsg, setChatMsg] = useState('');
@@ -44,11 +55,12 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     scrollToBottom();
   }, [messages]);
 
-  const activeSecret = (game?.lobbyCode === 'DEV1' && impersonateId) ? allSecrets[impersonateId] : mySecret;
-  const isImpersonating = !!(game?.lobbyCode === 'DEV1' && impersonateId);
-
+  const isDev = !!game?.lobbyCode?.startsWith('DEV');
   const isMod = game?.moderatorId === user.uid;
   const me = players.find(p => p.uid === user.uid);
+  const activeSecret = (isDev && impersonateId) ? allSecrets[impersonateId] : mySecret;
+  const isImpersonating = !!(isDev && impersonateId);
+
   const hasAutoReset = useRef(false);
   const lastAIPhaseRun = useRef<string>('');
   const isMyTurn = (game?.phase === 'cupid_turn' && activeSecret?.role === 'cupid') ||
@@ -96,8 +108,10 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     const runAI = async () => {
       // 1. Accusations in day_vote (appearing after narrator message)
       if (game.phase === 'day_vote') {
-        // Delay to allow narrator message to appear first
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        const mod = players.find(p => p.uid === game.moderatorId);
+        const modWaitTime = (mod && !mod.isAlive) ? 0 : 1500;
+        
+        await new Promise(resolve => setTimeout(resolve, modWaitTime));
         
         setIsAITalking(true);
         const accusations = generateAccusations(gameDataAsState);
@@ -123,11 +137,17 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
         const batch = writeBatch(db);
         let hasChanges = false;
         
+        const mod = players.find(p => p.uid === game.moderatorId);
+        const voteWaitTime = (mod && !mod.isAlive) ? 1000 : 3000;
+        
         // Delay votes to let players read accusations
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, voteWaitTime));
         
         aiVotes.forEach((v: any) => {
            const p = players.find(pl => pl.uid === v.agentId);
+           // Skip if being impersonated in dev mode
+           if (p?.uid === impersonateId && isDev) return;
+           
            if (p && !p.vote) {
               batch.update(doc(db, `games/${gameId}/players`, v.agentId), { vote: v.votedFor });
               broadcastEvent({ type: 'VOTED_AGAINST', subjectId: v.agentId, objectId: v.votedFor });
@@ -140,7 +160,8 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
       // 3. Night Actions
       if (game.phase === 'cupid_turn') {
          const cupid = players.find(p => p.isAlive && allSecrets[p.uid]?.role === 'cupid');
-         if (cupid?.isBot && !game.nightTargets?.cupidCouples?.length) {
+         // Skip if being impersonated or already used
+         if (cupid?.isBot && !game.nightTargets?.cupidCouples?.length && !game.cupidUsed && (!isDev || impersonateId !== cupid.uid)) {
             const actions = resolveNight(gameDataAsState);
             const cupidAction = actions.find((a: any) => a.type === 'CUPID_CHOOSE');
             if (cupidAction) {
@@ -154,7 +175,9 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
 
       if (game.phase === 'werewolves_turn') {
          const aliveWolves = players.filter(p => p.isAlive && allSecrets[p.uid]?.role === 'werewolf');
-         if (aliveWolves.every(w => w.isBot) && !game.nightTargets?.werewolfTarget) {
+         // Skip bots if they are being impersonated
+         const fullyBotWolves = aliveWolves.every(w => w.isBot && (!isDev || impersonateId !== w.uid));
+         if (fullyBotWolves && !game.nightTargets?.werewolfTarget) {
             const actions = resolveNight(gameDataAsState);
             const wolfAction = actions.find((a: any) => a.type === 'WOLF_ATTACK');
             if (wolfAction) {
@@ -168,7 +191,8 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
 
       if (game.phase === 'witch_turn') {
          const witch = players.find(p => p.isAlive && allSecrets[p.uid]?.role === 'witch');
-         if (witch?.isBot && !game.nightTargets?.witchKill && !game.nightTargets?.witchHeal) {
+         // Skip bot if being impersonated
+         if (witch?.isBot && !game.nightTargets?.witchKill && !game.nightTargets?.witchHeal && (!isDev || impersonateId !== witch.uid)) {
             const actions = resolveNight(gameDataAsState);
             const witchAction = actions.find((a: any) => a.type === 'WITCH_ACTION');
             if (witchAction) {
@@ -188,7 +212,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
 
   useEffect(() => {
     // Auto-reset when entering DEV mode if moderator
-    if (game?.lobbyCode === 'DEV1' && isMod && !hasAutoReset.current) {
+    if (isDev && isMod && !hasAutoReset.current) {
       hasAutoReset.current = true;
       handleRestartGame();
     }
@@ -244,7 +268,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     setIsUpdatingPhase(true);
     
     // Purge chat for DEV lobby
-    if (game.lobbyCode === 'DEV1') {
+    if (isDev) {
       try {
         const msgsSnap = await getDocs(collection(db, `games/${gameId}/messages`));
         const batchMessages = writeBatch(db);
@@ -281,7 +305,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
       roleCounts[role]++;
       
       let displayName = p.displayName;
-      if (game.lobbyCode === 'DEV1') {
+      if (isDev) {
         const roleNameMap: Record<Role, string> = {
           werewolf: 'Lobo',
           witch: 'Bruja',
@@ -330,6 +354,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
       },
       witchHealUsed: false,
       witchPoisonUsed: false,
+      cupidUsed: false,
       updatedAt: now
     });
 
@@ -435,7 +460,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
        // Reset game
        const batch = writeBatch(db);
        
-       if (game.lobbyCode === 'DEV1') {
+       if (isDev) {
          try {
            const msgsSnap = await getDocs(collection(db, `games/${gameId}/messages`));
            msgsSnap.forEach(m => {
@@ -446,12 +471,21 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
          }
        }
 
-       batch.update(doc(db, 'games', gameId), { 
-         status: 'waiting', 
-         phase: 'lobby', 
-         winner: null,
-         lastStartTime: Date.now()
-       });
+    batch.update(doc(db, 'games', gameId), { 
+      status: 'waiting', 
+      phase: 'lobby', 
+      winner: null,
+      lastStartTime: Date.now(),
+      nightTargets: {
+        werewolfTarget: '',
+        witchHeal: false,
+        witchKill: '',
+        cupidCouples: []
+      },
+      witchHealUsed: false,
+      witchPoisonUsed: false,
+      cupidUsed: false
+    });
 
        players.forEach((p, i) => {
          batch.update(doc(db, `games/${gameId}/players`, p.uid), {
@@ -504,7 +538,10 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     if (activeSecret?.role !== 'witch') return;
     const update: any = { updatedAt: Date.now() };
     if (type === 'heal') {
-       if (game.witchHealUsed && !game.nightTargets?.witchHeal) return; // Cannot start healing if already used
+       if (game.witchHealUsed && !game.nightTargets?.witchHeal) {
+         alert("⚠️ La bruja ya ha usado su poción de curación en esta partida.");
+         return;
+       }
        // Toggle healing
        update['nightTargets.witchHeal'] = !game.nightTargets?.witchHeal;
     }
@@ -583,6 +620,9 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
         witchKill: '',
         cupidCouples: []
       },
+      witchHealUsed: false,
+      witchPoisonUsed: false,
+      cupidUsed: false,
       updatedAt: now
     });
 
@@ -593,7 +633,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
         revealedRole: null,
         revealedCardUrl: null,
         vote: null,
-        displayName: game.lobbyCode === 'DEV1' ? `Jugador ${i + 1}` : p.displayName
+        displayName: isDev ? `Jugador ${i + 1}` : p.displayName
       });
       // Delete their secrets
       batch.delete(doc(db, `games/${gameId}/players/${p.uid}/secret/data`));
@@ -603,7 +643,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     // The requirement says "El chat se vacía al salir de la partida"
     // For DEV1 we definitely want to delete. For others, lastStartTime helps filters.
     // If we want to be safe, we delete for DEV1 to keep database clean.
-    if (game.lobbyCode === 'DEV1') {
+    if (isDev) {
       try {
         const msgsSnap = await getDocs(collection(db, `games/${gameId}/messages`));
         msgsSnap.docs.forEach(m => {
@@ -783,7 +823,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
             <span className="text-lg font-mono font-bold text-amber-400 tracking-widest leading-none uppercase">{game.lobbyCode}</span>
           </div>
           <div className="bg-indigo-600 px-6 py-2 rounded-xl text-white font-black shadow-lg shadow-indigo-900/20 text-xs sm:text-sm uppercase tracking-tighter">
-            Fase: {game.phase.replace('_', ' ')}
+            Fase: {PHASE_LABELS[game.phase] || game.phase}
           </div>
           <button 
             onClick={onLeave}
@@ -901,9 +941,9 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
 
                      <span className={`text-xs font-bold truncate w-full text-center ${!p.isAlive ? 'text-red-400' : 'text-slate-300'}`}>{p.displayName}</span>
                      {!p.isAlive && <span className="text-[10px] font-black uppercase text-red-500 mt-1">ELIMINADO</span>}
-                     {game.lobbyCode === 'DEV1' && isMod && p.uid !== user.uid && (
+                     {isDev && p.uid !== user.uid && (
                         <button 
-                          onClick={(e) => { e.stopPropagation(); setImpersonateId(impersonateId === p.uid ? null : p.uid); }}
+                          onClick={(e) => { e.stopPropagation(); setImpersonateId(impersonateId === p.uid ? null : p.uid); setIsDevNarratorMode(false); }}
                           className={`mt-2 text-[8px] font-black uppercase px-2 py-1 rounded-lg transition-all ${impersonateId === p.uid ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-400 hover:text-white'}`}
                         >
                            {impersonateId === p.uid ? 'SOLTAR' : 'SUPLANTAR'}
@@ -1001,7 +1041,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
       <footer className="mt-6 flex flex-col lg:flex-row gap-4 h-auto lg:h-24 shrink-0">
         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl flex flex-wrap items-center px-6 py-4 gap-6 min-w-0 shadow-2xl relative overflow-hidden">
            {/* Actions / Powers */}
-           {((me?.isAlive && activeSecret) || isMod) && (
+           {((me?.isAlive && activeSecret) || isMod || isDev) && (
              <div className="flex items-center gap-6 overflow-x-auto scrollbar-hide w-full">
                 <div className="flex flex-col min-w-[140px]">
                    <span className="text-[10px] text-indigo-500 uppercase font-black tracking-[0.1em] mb-2 leading-none">Poder de {activeSecret?.role === 'werewolf' ? 'LOBO' : activeSecret?.role === 'witch' ? 'BRUJA' : activeSecret?.role?.toUpperCase() || 'MOD'}</span>
@@ -1015,11 +1055,11 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                          >
                             {game.witchHealUsed ? 'POCIÓN CURACIÓN AGOTADA' : game.nightTargets?.witchHeal ? 'POCIÓN CURACIÓN USADA' : 'USAR POCIÓN CURACIÓN'}
                          </button>
-                         {isMyTurn && (
+                         {(isMyTurn || isDev) && (
                             <button 
                               onClick={() => {
                                 sendMsg(undefined, "La bruja ya ha terminado su turno");
-                                if (isMod) updatePhase('day_reveal', '¡Pueblo despierta! La luz del sol se asoma...');
+                                if (isMod || isDev) updatePhase('day_reveal', '¡Pueblo despierta! La luz del sol se asoma...');
                               }}
                               className="bg-purple-600 text-white text-[10px] px-3 py-1.5 rounded-xl font-black uppercase hover:bg-purple-500 flex items-center gap-2"
                             >
@@ -1033,13 +1073,16 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                          <span className="text-[10px] text-pink-400 font-black uppercase animate-pulse">
                            {game.nightTargets?.cupidCouples?.length === 2 ? 'Flechas lanzadas' : `Eligiendo amantes: ${game.nightTargets?.cupidCouples?.length || 0}/2`}
                          </span>
-                         {game.nightTargets?.cupidCouples?.length === 2 && isMyTurn && (
+                         {game.nightTargets?.cupidCouples?.length === 2 && (isMyTurn || isDev) && (
                             <button 
                               onClick={() => {
                                  const c = game.nightTargets?.cupidCouples || [];
                                  handleCupidAction(c[0], c[1]);
                                  sendMsg(undefined, "Cupido ya ha disparado sus flechas");
-                                 if (isMod) updatePhase('werewolves_turn', 'Los lobos despiertan hambrientos...');
+                                 if (isMod || isDev) {
+                                   updatePhase('werewolves_turn', 'Los lobos despiertan hambrientos...');
+                                   updateDoc(doc(db, 'games', gameId), { cupidUsed: true });
+                                 }
                               }}
                               className="bg-pink-600 text-white text-[10px] px-3 py-1 rounded-lg font-black uppercase hover:bg-pink-500 flex items-center gap-2"
                             >
@@ -1053,11 +1096,11 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                           <span className="text-[10px] text-red-500 font-black uppercase flex items-center gap-1">
                             <Skull className="w-3 h-3" /> {game.nightTargets?.werewolfTarget ? 'Víctima marcada' : 'Elige una presa'}
                           </span>
-                          {game.nightTargets?.werewolfTarget && isMyTurn && (
+                          {game.nightTargets?.werewolfTarget && (isMyTurn || isDev) && (
                             <button 
                               onClick={() => {
                                 sendMsg(undefined, "Los lobos ya han terminado su cacería");
-                                if (isMod) updatePhase('witch_turn', 'La bruja despierta con sus pociones...');
+                                if (isMod || isDev) updatePhase('witch_turn', 'La bruja despierta con sus pociones...');
                               }}
                               className="bg-red-600 text-white text-[10px] px-3 py-1 rounded-lg font-black uppercase hover:bg-red-500 flex items-center gap-2"
                             >
@@ -1066,13 +1109,10 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                           )}
                        </div>
                      )}
-                     {activeSecret?.role === 'witch' && isMyTurn && (
-                       null 
-                     )}
-                     {activeSecret?.role === 'villager' && (
+                     {activeSecret?.role === 'villager' && !isDevNarratorMode && (
                        <span className="text-[10px] text-slate-500 font-black uppercase italic">"Solo un humilde aldeano..."</span>
                      )}
-                     {isMod && !activeSecret && (
+                     {(isMod || isDev) && isDevNarratorMode && (
                         <span className="text-[10px] text-indigo-500 font-black uppercase italic animate-pulse">Panel de Control</span>
                      )}
                    </div>
@@ -1080,116 +1120,108 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
 
                 <div className="h-10 w-[1px] bg-slate-800 shrink-0"></div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide py-1">
                    <button 
                      onClick={() => setShowRole(!showRole)}
-                     className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] shadow-lg active:scale-95 transition-all ${showRole ? 'bg-amber-600 text-white shadow-amber-900/20' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/20'}`}
+                     className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] shadow-lg active:scale-95 transition-all whitespace-nowrap ${showRole ? 'bg-amber-600 text-white shadow-amber-900/20' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/20'}`}
                    >
                      {showRole ? 'Ocultar carta' : 'Ver carta'}
                    </button>
-                     {isMod && (
-                       <div className="flex gap-2">
-                        {(isDevNarratorMode || game.lobbyCode !== 'DEV1') && (
-                          <>
-                            {game.status === 'waiting' ? (
-                              <div className="flex gap-2">
-                                 <button 
-                                   onClick={handleAddBot} 
-                                   disabled={isAddingBot || players.length >= 12} 
-                                   className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl text-[10px] font-black uppercase disabled:opacity-50 transition-all font-mono border border-slate-700 flex items-center gap-2"
-                                 >
-                                   <Bot className="w-4 h-4" />
-                                   {isAddingBot ? 'Añadiendo...' : 'Añadir IA'}
-                                 </button>
-                                 <button onClick={startLevel} disabled={players.length < 4} className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase disabled:opacity-50 transition-all font-mono">EMPEZAR</button>
-                               </div>
-                            ) : game.status === 'playing' ? (
-                              <div className={`bg-slate-800 p-2 rounded-2xl flex gap-2 border border-slate-700 transition-all ${isUpdatingPhase ? 'opacity-50 pointer-events-none' : ''}`}>
-                                <button 
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); updatePhase('night_start', '¡El pueblo duerme! Todos cierren los ojos...'); }} 
-                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'night_start' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`} 
-                                  title="Noche"
-                                >
-                                  <Moon className="w-6 h-6" />
-                                </button>
-                                <button 
-                                  onClick={(e) => { 
-                                    e.preventDefault(); 
-                                    e.stopPropagation(); 
-                                    if (isCupidAlive) {
-                                      updatePhase('cupid_turn', 'Cupido despierta y lanza sus flechas...'); 
-                                    } else {
-                                      sendMsg(undefined, "⚠️ Cupido ha sido eliminado. El amor tendrá que esperar...");
-                                      updatePhase('werewolves_turn', 'Los lobos despiertan hambrientos...');
-                                    }
-                                  }} 
-                                  disabled={!isCupidAlive && game.phase !== 'cupid_turn'}
-                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'cupid_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'} ${!isCupidAlive ? 'opacity-30' : ''}`} 
-                                  title="Cupido"
-                                >
-                                  <Heart className="w-5 h-6" />
-                                </button>
 
-                                <button 
-                                  onClick={(e) => { 
-                                    e.preventDefault(); 
-                                    e.stopPropagation(); 
-                                    if (areWolvesAlive) {
-                                      updatePhase('werewolves_turn', 'Los lobos despiertan hambrientos...'); 
-                                    } else {
-                                      sendMsg(undefined, "⚠️ No quedan lobos en el pueblo. Las ovejas duermen tranquilas...");
-                                      updatePhase('day_reveal', '¡Pueblo despierta! La luz del sol se asoma...');
-                                    }
-                                  }} 
-                                  disabled={!areWolvesAlive && game.phase !== 'werewolves_turn'}
-                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'werewolves_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'} ${!areWolvesAlive ? 'opacity-30' : ''}`} 
-                                  title="Lobos"
-                                >
-                                  <Skull className="w-6 h-6" />
-                                </button>
-                                <button 
-                                  onClick={(e) => { 
-                                    e.preventDefault(); 
-                                    e.stopPropagation(); 
-                                    if (isWitchAlive) {
-                                      updatePhase('witch_turn', 'La bruja despierta con sus pociones...'); 
-                                    } else {
-                                      sendMsg(undefined, "⚠️ La bruja ha sido eliminada. El pueblo sigue durmiendo...");
-                                      updatePhase('day_reveal', '¡Pueblo despierta! La luz del sol se asoma...');
-                                    }
-                                  }} 
-                                  disabled={!isWitchAlive && game.phase !== 'witch_turn'}
-                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'witch_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'} ${!isWitchAlive ? 'opacity-30' : ''}`} 
-                                  title="Bruja"
-                                >
-                                  <Zap className="w-6 h-6" />
-                                </button>
-                                <button 
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); updatePhase('day_reveal', '¡Pueblo despierta! La luz del sol se asoma...'); }} 
-                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'day_reveal' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`} 
-                                  title="Pueblo Despierta"
-                                >
-                                  <Sun className="w-6 h-6" />
-                                </button>
-                                <button 
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); updatePhase('day_vote', 'Es hora de decidir: ¿quién es el lobo?'); }} 
-                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'day_vote' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`} 
-                                  title="Votación"
-                                >
-                                  <Users className="w-6 h-6" />
-                                </button>
-                                 <button 
-                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); game.phase === 'day_vote' ? handleVerifyAccused() : checkWin(); }} 
-                                   disabled={isAITalking && game.phase === 'day_vote'}
-                                   className={`p-3 rounded-xl transition-all border border-transparent ${isAITalking && game.phase === 'day_vote' ? 'opacity-30 cursor-not-allowed text-slate-500' : 'hover:bg-red-900/20 text-red-500 hover:border-red-900/30'}`} 
-                                   title={game.phase === 'day_vote' ? (isAITalking ? "Bots hablando..." : "Verificar Acusado") : "Verificar Ganador"}
-                                 >
-                                  <Zap className="w-6 h-6" />
-                                </button>
-                              </div>
-                            ) : null}
-                          </>
-                        )}
+                   {(isMod || isDev) && (isDevNarratorMode || !isDev) && (
+                      <div className="flex items-center gap-2 shrink-0">
+                         {game.status === 'waiting' ? (
+                            <>
+                              <button 
+                                onClick={handleAddBot} 
+                                disabled={isAddingBot || players.length >= 12} 
+                                className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl text-[10px] font-black uppercase disabled:opacity-50 transition-all font-mono border border-slate-700 flex items-center gap-2 whitespace-nowrap"
+                              >
+                                <Bot className="w-4 h-4" />
+                                {isAddingBot ? 'IA' : 'IA+'}
+                              </button>
+                              <button 
+                                onClick={startLevel} 
+                                disabled={players.length < 4} 
+                                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase disabled:opacity-50 transition-all font-mono whitespace-nowrap"
+                              >
+                                EMPEZAR
+                              </button>
+                            </>
+                         ) : (
+                           <div className={`bg-slate-800 p-2 rounded-2xl flex gap-2 border border-slate-700 transition-all ${isUpdatingPhase ? 'opacity-50 pointer-events-none' : ''}`}>
+                             <button 
+                               onClick={() => updatePhase('night_start', '¡El pueblo duerme! Todos cierren los ojos...')} 
+                               className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'night_start' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`} 
+                               title="Sueño"
+                             >
+                               <Moon className="w-6 h-6" />
+                             </button>
+                             <button 
+                               onClick={() => { 
+                                 if (isCupidAlive && !game.cupidUsed) {
+                                   updatePhase('cupid_turn', 'Cupido despierta y lanza sus flechas...'); 
+                                 } else {
+                                   updatePhase('werewolves_turn', 'Los lobos despiertan hambrientos...');
+                                 }
+                               }} 
+                               disabled={(!isCupidAlive || game.cupidUsed) && game.phase !== 'cupid_turn'}
+                               className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'cupid_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'} ${(!isCupidAlive || game.cupidUsed) ? 'opacity-30' : ''}`} 
+                               title="Cupido"
+                             >
+                               <Heart className="w-6 h-6" />
+                             </button>
+                             <button 
+                               onClick={() => { 
+                                 if (areWolvesAlive) {
+                                   updatePhase('werewolves_turn', 'Los lobos despiertan hambrientos...'); 
+                                 } else {
+                                   updatePhase('day_reveal', '¡Pueblo despierta! La luz del sol se asoma...');
+                                 }
+                               }} 
+                               disabled={!areWolvesAlive && game.phase !== 'werewolves_turn'}
+                               className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'werewolves_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'} ${!areWolvesAlive ? 'opacity-30' : ''}`} 
+                               title="Lobos"
+                             >
+                               <Skull className="w-6 h-6" />
+                             </button>
+                             <button 
+                               onClick={() => { 
+                                 if (isWitchAlive) {
+                                   updatePhase('witch_turn', 'La bruja despierta con sus pociones...'); 
+                                 } else {
+                                   updatePhase('day_reveal', '¡Pueblo despierta! La luz del sol se asoma...');
+                                 }
+                               }} 
+                               disabled={!isWitchAlive && game.phase !== 'witch_turn'}
+                               className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'witch_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'} ${(!isWitchAlive) ? 'opacity-30' : ''}`} 
+                               title="Bruja"
+                             >
+                               <Zap className="w-6 h-6" />
+                             </button>
+                             <button 
+                               onClick={() => updatePhase('day_reveal', '¡Pueblo despierta! La luz del sol se asoma...')} 
+                               className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'day_reveal' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`} 
+                               title="Despertar"
+                             >
+                               <Sun className="w-6 h-6" />
+                             </button>
+                             <button 
+                               onClick={() => updatePhase('day_vote', 'Es hora de decidir: ¿quién es el lobo?')} 
+                               className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'day_vote' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`} 
+                               title="Votación"
+                             >
+                               <Users className="w-6 h-6" />
+                             </button>
+                             <button 
+                               onClick={() => game.phase === 'day_vote' ? handleVerifyAccused() : checkWin()} 
+                               className="p-3 hover:bg-red-900/20 text-red-500 rounded-xl transition-all border border-transparent hover:border-red-900/30" 
+                               title={game.phase === 'day_vote' ? "Verificar Veredicto" : "Comprobar"}
+                             >
+                               <Zap className="w-6 h-6" />
+                             </button>
+                           </div>
+                         )}
                       </div>
                    )}
                 </div>
@@ -1217,7 +1249,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
       <AnimatePresence>
         {((game.phase === 'night_start' || (game.phase.includes('turn') && !isMyTurn)) && 
           game.status !== 'ended' && 
-          (!isMod || (game.lobbyCode === 'DEV1' && !isDevNarratorMode && !isMyTurn))) && (
+          (!isMod || (isDev && !isDevNarratorMode && !isMyTurn))) && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1266,18 +1298,21 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
       </AnimatePresence>
 
       {/* Dev Master Panel (Always on top for DEV lobby) */}
-      {game.lobbyCode === 'DEV1' && isMod && (
+      {isDev && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] flex gap-2 items-center scale-90 sm:scale-100">
            <div className="bg-slate-900/95 backdrop-blur-md border-2 border-indigo-500/50 px-2 py-1.5 rounded-3xl flex gap-3 shadow-[0_0_50px_rgba(79,70,229,0.5)] items-center">
               <div className="flex flex-col px-2">
                  <span className="text-[7px] text-indigo-400 font-black uppercase tracking-widest leading-none mb-1">Modo Maestro</span>
                  <select 
-                   value={impersonateId || 'narrator'}
+                   value={impersonateId || (isDevNarratorMode ? 'narrator' : 'me')}
                    onChange={(e) => {
                      const val = e.target.value;
                      if (val === 'narrator') {
                        setImpersonateId(null);
                        setIsDevNarratorMode(true);
+                     } else if (val === 'me') {
+                        setImpersonateId(null);
+                        setIsDevNarratorMode(false);
                      } else {
                        setImpersonateId(val);
                        setIsDevNarratorMode(false);
@@ -1286,8 +1321,10 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                    className="bg-transparent text-white text-[10px] font-bold focus:outline-none cursor-pointer uppercase appearance-none"
                  >
                    <option value="narrator" className="bg-slate-900 text-indigo-400 font-bold">📢 NARRADOR</option>
+                   <option value="me" className="bg-slate-900 text-white font-bold">👤 MI PERFIL (TÚ)</option>
                    <optgroup label="JUGADORES" className="bg-slate-900 text-slate-500">
                       {players.map(p => {
+                        if (p.uid === user.uid) return null;
                         const role = allSecrets[p.uid]?.role;
                         const roleLabel = role ? ` (${role === 'werewolf' ? 'LOBO' : role === 'witch' ? 'BRUJA' : role === 'cupid' ? 'CUPIDO' : 'ALDEANO'})` : '';
                         return (
@@ -1343,7 +1380,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                 
                 {isMod && (
                   <button 
-                    onClick={() => updatePhase('lobby', '¡Prepárense para la revancha!')}
+                    onClick={handleRestartGame}
                     className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-2xl shadow-lg transition-all"
                   >
                     NUEVA PARTIDA

@@ -28,6 +28,7 @@ export interface Game {
   nightTargets?: NightTargets;
   witchHealUsed?: boolean;
   witchPoisonUsed?: boolean;
+  cupidUsed?: boolean;
   lastStartTime?: number;
   lastSleepTime?: number;
   lastWakeUpTime?: number;
