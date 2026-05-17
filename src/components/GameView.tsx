@@ -3,7 +3,7 @@ import { User } from 'firebase/auth';
 import { db } from '../lib/firebase';
 import { doc, updateDoc, setDoc, collection, writeBatch, addDoc, getDoc, getDocs } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
-import { ROLE_IMAGES, LOBO_IMAGES } from '../constants/images';
+import { CARD_URLS, getRoleCard } from '../constants/cards';
 import { GamePhase, Role } from '../types/game';
 import { Users, LogOut, MessageSquare, Shield, Moon, Sun, Heart, Skull, Zap, Send, Bot } from 'lucide-react';
 import { useState, FormEvent, useEffect, useRef, useMemo } from 'react';
@@ -54,6 +54,18 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
   const isMyTurn = (game?.phase === 'cupid_turn' && activeSecret?.role === 'cupid') ||
                    (game?.phase === 'werewolves_turn' && activeSecret?.role === 'werewolf') ||
                    (game?.phase === 'witch_turn' && activeSecret?.role === 'witch');
+
+  const isWitchAlive = useMemo(() => {
+    return players.some(p => p.isAlive && (p.revealedRole === 'witch' || allSecrets[p.uid]?.role === 'witch'));
+  }, [players, allSecrets]);
+
+  const isCupidAlive = useMemo(() => {
+    return players.some(p => p.isAlive && (p.revealedRole === 'cupid' || allSecrets[p.uid]?.role === 'cupid'));
+  }, [players, allSecrets]);
+
+  const areWolvesAlive = useMemo(() => {
+    return players.some(p => p.isAlive && (p.revealedRole === 'werewolf' || allSecrets[p.uid]?.role === 'werewolf'));
+  }, [players, allSecrets]);
 
   // AI Integration
   const aiBotsConfig = useMemo(() => players.filter(p => p.isBot).map(p => ({
@@ -284,12 +296,17 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
 
       batch.set(doc(db, `games/${gameId}/players/${p.uid}/secret/data`), {
         role: role,
+        cardUrl: getRoleCard(role, gameId + p.uid + now),
         isEnamorado: false
       });
 
-      if (game.lobbyCode === 'DEV1') {
-        batch.update(doc(db, `games/${gameId}/players`, p.uid), { displayName });
-      }
+      batch.update(doc(db, `games/${gameId}/players`, p.uid), { 
+        isAlive: true,
+        vote: null,
+        revealedRole: null,
+        revealedCardUrl: null,
+        displayName 
+      });
     });
 
     // Reset AI manager with new roles
@@ -380,7 +397,13 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
 
          // Track those who will die
          deadIds.forEach(id => {
-           batch.update(doc(db, `games/${gameId}/players`, id), { isAlive: false });
+           const player = players.find(p => p.uid === id);
+           const secret = allSecrets[id];
+           batch.update(doc(db, `games/${gameId}/players`, id), { 
+             isAlive: false,
+             revealedRole: secret?.role || 'villager',
+             revealedCardUrl: secret?.cardUrl || CARD_URLS.back
+           });
            broadcastEvent({ type: 'INNOCENT_KILLED', objectId: id });
          });
 
@@ -408,28 +431,43 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
          return;
       }
 
-      if (newPhase === 'lobby') {
-         // Reset game
-         const batch = writeBatch(db);
-         
-         if (game.lobbyCode === 'DEV1') {
+    if (newPhase === 'lobby') {
+       // Reset game
+       const batch = writeBatch(db);
+       
+       if (game.lobbyCode === 'DEV1') {
+         try {
            const msgsSnap = await getDocs(collection(db, `games/${gameId}/messages`));
            msgsSnap.forEach(m => {
              batch.delete(m.ref);
            });
+         } catch (err) {
+           console.warn("Could not delete some messages", err);
          }
+       }
 
-         batch.update(doc(db, 'games', gameId), { 
-           status: 'waiting', 
-           phase: 'lobby', 
-           winner: null,
-           lastStartTime: Date.now()
+       batch.update(doc(db, 'games', gameId), { 
+         status: 'waiting', 
+         phase: 'lobby', 
+         winner: null,
+         lastStartTime: Date.now()
+       });
+
+       players.forEach((p, i) => {
+         batch.update(doc(db, `games/${gameId}/players`, p.uid), {
+           isAlive: true,
+           revealedRole: null,
+           revealedCardUrl: null,
+           vote: null,
+           displayName: game.lobbyCode === 'DEV1' ? `Jugador ${i + 1}` : p.displayName
          });
+         batch.delete(doc(db, `games/${gameId}/players/${p.uid}/secret/data`));
+       });
 
-         await batch.commit();
-         setIsUpdatingPhase(false);
-         return;
-      }
+       await batch.commit();
+       setIsUpdatingPhase(false);
+       return;
+    }
 
       if (newPhase === 'werewolves_turn' && game.phase === 'cupid_turn') {
          const couples = game.nightTargets?.cupidCouples || [];
@@ -552,6 +590,8 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     players.forEach((p, i) => {
       batch.update(doc(db, `games/${gameId}/players`, p.uid), {
         isAlive: true,
+        revealedRole: null,
+        revealedCardUrl: null,
         vote: null,
         displayName: game.lobbyCode === 'DEV1' ? `Jugador ${i + 1}` : p.displayName
       });
@@ -640,7 +680,11 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
     const roleName = role === 'werewolf' ? 'LOBO' : role === 'witch' ? 'BRUJA' : role === 'cupid' ? 'CUPIDO' : 'ALDEANO';
 
     const batch = writeBatch(db);
-    batch.update(doc(db, `games/${gameId}/players`, victimId), { isAlive: false });
+    batch.update(doc(db, `games/${gameId}/players`, victimId), { 
+      isAlive: false,
+      revealedRole: role,
+      revealedCardUrl: secretSnap.exists() ? secretSnap.data().cardUrl : CARD_URLS.back
+    });
     
     broadcastEvent({ 
       type: role === 'werewolf' ? 'WOLF_REVEALED' : 'INNOCENT_KILLED', 
@@ -819,30 +863,39 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
 
                      {/* Card Graphic */}
                      <div className={`
-                        relative w-24 h-32 md:w-28 md:h-36 rounded-xl border-2 overflow-hidden transition-all duration-500 preserve-3d mb-3
-                        ${showRole && isActing ? 'rotate-y-180' : ''}
+                        relative w-24 h-32 md:w-28 md:h-36 rounded-xl border-2 transition-all duration-500 preserve-3d mb-3
+                        ${(showRole && isActing) || !p.isAlive ? 'rotate-y-180' : ''}
                         ${p.isAlive ? 'border-slate-700 bg-indigo-950' : 'border-red-900/50 bg-red-950/20'}
                      `}>
                         {/* Back */}
-                        <div className="absolute inset-0 backface-hidden flex items-center justify-center">
-                           {!p.isAlive ? <Skull className="w-8 h-8 text-red-950" /> : <div className="text-indigo-900/40 text-4xl font-black italic">?</div>}
+                        <div className="absolute inset-0 backface-hidden flex items-center justify-center rounded-xl overflow-hidden">
+                           <img src={CARD_URLS.back} className="w-full h-full object-cover" />
+                           {!p.isAlive && (
+                              <div className="absolute inset-0 bg-red-950/60 flex items-center justify-center">
+                                 <Skull className="w-8 h-8 text-red-500/80" />
+                              </div>
+                           )}
                         </div>
                         
-                        {/* Front (Acting or Peek) */}
+                        {/* Front (Acting or Peek or Dead) */}
                         {(isActing || (devPeekSecrets && allSecrets[p.uid]) || !p.isAlive) && (
-                           <AnimatePresence>
-                           <div className={`absolute inset-0 backface-hidden ${(isActing || !p.isAlive) ? 'rotate-y-180' : ''}`}>
-                              <img src={ROLE_IMAGES[allSecrets[p.uid]?.role || (isActing ? activeSecret?.role : 'villager')] || ROLE_IMAGES.villager} className="w-full h-full object-cover" />
-                              <div className="absolute inset-0 bg-indigo-950/80 flex flex-col items-center justify-center p-2 text-center">
-                                 <span className="text-[8px] font-black text-indigo-300 uppercase leading-none mb-1">{isActing ? 'TU ROL' : 'SOPLO'}</span>
-                                 <span className="text-sm font-black text-white uppercase leading-tight">
-                                    {(allSecrets[p.uid]?.role || activeSecret?.role) === 'werewolf' ? 'LOBO' : 
-                                     (allSecrets[p.uid]?.role || activeSecret?.role) === 'witch' ? 'BRUJA' : 
-                                     (allSecrets[p.uid]?.role || activeSecret?.role) === 'cupid' ? 'CUPIDO' : 'ALDEANO'}
+                           <div className={`absolute inset-0 backface-hidden rounded-xl overflow-hidden ${(isActing || !p.isAlive) ? 'rotate-y-180' : ''}`}>
+                              <img 
+                                 src={p.revealedCardUrl || allSecrets[p.uid]?.cardUrl || (isActing ? (activeSecret?.cardUrl || getRoleCard(activeSecret?.role || 'villager', p.uid)) : CARD_URLS.back)} 
+                                 className="w-full h-full object-cover" 
+                                 referrerPolicy="no-referrer"
+                              />
+                              <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-end p-2 text-center">
+                                 <span className="text-[8px] font-black text-white/70 uppercase leading-none mb-1">
+                                    {!p.isAlive ? 'Revelación' : isActing ? 'TU ROL' : 'SOPLO'}
+                                 </span>
+                                 <span className="text-sm font-black text-white uppercase leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                                    {(p.revealedRole || allSecrets[p.uid]?.role || activeSecret?.role) === 'werewolf' ? 'LOBO' : 
+                                     (p.revealedRole || allSecrets[p.uid]?.role || activeSecret?.role) === 'witch' ? 'BRUJA' : 
+                                     (p.revealedRole || allSecrets[p.uid]?.role || activeSecret?.role) === 'cupid' ? 'CUPIDO' : 'ALDEANO'}
                                  </span>
                               </div>
                            </div>
-                           </AnimatePresence>
                         )}
                      </div>
 
@@ -1029,12 +1082,10 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
 
                 <div className="flex items-center gap-3">
                    <button 
-                     onMouseDown={() => setShowRole(true)}
-                     onMouseUp={() => setShowRole(false)}
-                     onMouseLeave={() => setShowRole(false)}
-                     className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] shadow-lg shadow-indigo-900/20 active:scale-95 transition-all"
+                     onClick={() => setShowRole(!showRole)}
+                     className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] shadow-lg active:scale-95 transition-all ${showRole ? 'bg-amber-600 text-white shadow-amber-900/20' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/20'}`}
                    >
-                     Ver carta
+                     {showRole ? 'Ocultar carta' : 'Ver carta'}
                    </button>
                      {isMod && (
                        <div className="flex gap-2">
@@ -1062,23 +1113,53 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                                   <Moon className="w-6 h-6" />
                                 </button>
                                 <button 
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); updatePhase('cupid_turn', 'Cupido despierta y lanza sus flechas...'); }} 
-                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'cupid_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`} 
+                                  onClick={(e) => { 
+                                    e.preventDefault(); 
+                                    e.stopPropagation(); 
+                                    if (isCupidAlive) {
+                                      updatePhase('cupid_turn', 'Cupido despierta y lanza sus flechas...'); 
+                                    } else {
+                                      sendMsg(undefined, "⚠️ Cupido ha sido eliminado. El amor tendrá que esperar...");
+                                      updatePhase('werewolves_turn', 'Los lobos despiertan hambrientos...');
+                                    }
+                                  }} 
+                                  disabled={!isCupidAlive && game.phase !== 'cupid_turn'}
+                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'cupid_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'} ${!isCupidAlive ? 'opacity-30' : ''}`} 
                                   title="Cupido"
                                 >
                                   <Heart className="w-5 h-6" />
                                 </button>
 
                                 <button 
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); updatePhase('werewolves_turn', 'Los lobos despiertan hambrientos...'); }} 
-                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'werewolves_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`} 
+                                  onClick={(e) => { 
+                                    e.preventDefault(); 
+                                    e.stopPropagation(); 
+                                    if (areWolvesAlive) {
+                                      updatePhase('werewolves_turn', 'Los lobos despiertan hambrientos...'); 
+                                    } else {
+                                      sendMsg(undefined, "⚠️ No quedan lobos en el pueblo. Las ovejas duermen tranquilas...");
+                                      updatePhase('day_reveal', '¡Pueblo despierta! La luz del sol se asoma...');
+                                    }
+                                  }} 
+                                  disabled={!areWolvesAlive && game.phase !== 'werewolves_turn'}
+                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'werewolves_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'} ${!areWolvesAlive ? 'opacity-30' : ''}`} 
                                   title="Lobos"
                                 >
                                   <Skull className="w-6 h-6" />
                                 </button>
                                 <button 
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); updatePhase('witch_turn', 'La bruja despierta con sus pociones...'); }} 
-                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'witch_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`} 
+                                  onClick={(e) => { 
+                                    e.preventDefault(); 
+                                    e.stopPropagation(); 
+                                    if (isWitchAlive) {
+                                      updatePhase('witch_turn', 'La bruja despierta con sus pociones...'); 
+                                    } else {
+                                      sendMsg(undefined, "⚠️ La bruja ha sido eliminada. El pueblo sigue durmiendo...");
+                                      updatePhase('day_reveal', '¡Pueblo despierta! La luz del sol se asoma...');
+                                    }
+                                  }} 
+                                  disabled={!isWitchAlive && game.phase !== 'witch_turn'}
+                                  className={`p-3 rounded-xl transition-all shadow-sm ${game.phase === 'witch_turn' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'} ${!isWitchAlive ? 'opacity-30' : ''}`} 
                                   title="Bruja"
                                 >
                                   <Zap className="w-6 h-6" />
@@ -1164,11 +1245,12 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                 <motion.div 
                    animate={{ scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] }}
                    transition={{ duration: 4, repeat: Infinity }}
-                   className="w-48 h-64 rounded-3xl border-4 border-indigo-400 overflow-hidden shadow-[0_0_50px_rgba(129,140,248,0.5)]"
+                   className="w-48 h-64 rounded-3xl border-4 border-indigo-400 overflow-hidden shadow-[0_0_50px_rgba(129,140,248,0.5)] bg-slate-900"
                 >
                    <img 
-                      src={ROLE_IMAGES[activeSecret?.role || 'villager']} 
+                      src={activeSecret?.cardUrl || CARD_URLS.back} 
                       className="w-full h-full object-cover" 
+                      referrerPolicy="no-referrer"
                    />
                 </motion.div>
                 <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-indigo-500 text-white px-6 py-2 rounded-full font-black uppercase text-xs shadow-xl min-w-[100px]">

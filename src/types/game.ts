@@ -44,10 +44,13 @@ export interface Player {
   isBot?: boolean;
   vote?: string;
   joinedAt: number;
+  revealedRole?: Role;
+  revealedCardUrl?: string;
 }
 
 export interface PlayerSecret {
   role: Role;
+  cardUrl?: string;
   isEnamorado: boolean;
   loverId?: string;
 }
