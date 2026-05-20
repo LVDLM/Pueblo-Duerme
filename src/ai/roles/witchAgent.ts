@@ -3,7 +3,7 @@
  * Rol Bruja: Puede curar o envenenar una vez por partida.
  */
 
-import { BaseAgent } from './baseAgent.js';
+import { BaseAgent } from './baseAgent';
 
 export class WitchAgent extends BaseAgent {
   constructor(config) {

@@ -5,8 +5,6 @@ import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firesto
 import { handleFirestoreError, OperationType } from '../lib/errorHandlers';
 import { motion } from 'motion/react';
 import { Play, UserPlus, Shield, LogIn, Terminal } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
-import { HandDrawn, SketchyFilters, TornEdge, NotebookCorner, PaperStain, PencilSketch, Scribble } from './ThemeManager';
 
 interface LobbyProps {
   onJoin: (id: string) => void;
@@ -20,98 +18,7 @@ export default function Lobby({ onJoin, user }: LobbyProps) {
   const [isJoining, setIsJoining] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const { theme } = useTheme();
-
   const generateCode = () => Math.random().toString(36).substring(2, 7).toUpperCase();
-
-  const handleGoogleLogin = async () => {
-    setIsLoggingIn(true);
-    try {
-      await loginWithGoogle();
-    } catch (error) {
-      alert("Error al iniciar sesión con Google. Intentando modo invitado...");
-      await loginAnonymously();
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  const handleDevMode = async () => {
-    let currentUser = user;
-    if (!currentUser) {
-      try {
-        currentUser = await loginAnonymously();
-      } catch (e) {
-        console.error("Anonymous login failed", e);
-        alert("El modo invitado (Anonymous) no está activado en Firebase. Por favor, actívalo o usa Google Login.");
-        return;
-      }
-    }
-    
-    if (!currentUser) return;
-
-    setIsCreating(true);
-    try {
-      const devCode = `DEV-${currentUser.uid.substring(0, 5).toUpperCase()}`; 
-      const q = query(collection(db, 'games'), where('lobbyCode', '==', devCode));
-      const snap = await getDocs(q);
-      
-      let gameId: string;
-      if (snap.empty) {
-        const gameRef = doc(collection(db, 'games'));
-        gameId = gameRef.id;
-        await setDoc(gameRef, {
-          lobbyCode: devCode,
-          status: 'waiting',
-          phase: 'lobby',
-          moderatorId: currentUser.uid,
-          narration: '¡MODO DEV ACTIVADO! Añadiendo jugadores de prueba...',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          lastStartTime: Date.now(),
-          nightTargets: {
-            werewolfTarget: '',
-            witchHeal: false,
-            witchKill: '',
-            cupidCouples: []
-          },
-          witchHealUsed: false,
-          witchPoisonUsed: false,
-          cupidUsed: false,
-        });
-      } else {
-        gameId = snap.docs[0].id;
-      }
-
-      // Add Current User
-      await setDoc(doc(db, `games/${gameId}/players`, currentUser.uid), {
-        uid: currentUser.uid,
-        displayName: name || "Dev Player " + currentUser.uid.substring(0,4),
-        isAlive: true,
-        isModerator: true,
-        joinedAt: Date.now(),
-      });
-
-      // Add Bots
-      const botNames = ['🐺 Lobo Feroz', '🧙‍♀️ Bruja Piruja', '💘 Cupido Ciego', '👮‍♂️ Comisario Gil', '👨‍🌾 Aldeano Pepe'];
-      for (let i = 0; i < botNames.length; i++) {
-        const botId = `bot_${i}`;
-        await setDoc(doc(db, `games/${gameId}/players`, botId), {
-          uid: botId,
-          displayName: botNames[i],
-          isAlive: true,
-          isModerator: false,
-          joinedAt: Date.now() + i + 1,
-        });
-      }
-
-      onJoin(gameId);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'dev_game');
-    } finally {
-      setIsCreating(false);
-    }
-  };
 
   const handleCreate = async () => {
     if (!name || isCreating) return;
@@ -121,7 +28,7 @@ export default function Lobby({ onJoin, user }: LobbyProps) {
       try {
         currentUser = await loginAnonymously();
       } catch (e) {
-        alert("Para crear una partida es necesario estar autenticado. Por favor, usa Google Login o activa el acceso anónimo en Firebase.");
+        alert("Para crear una partida es necesario estar autenticado.");
         return;
       }
     }
@@ -179,7 +86,7 @@ export default function Lobby({ onJoin, user }: LobbyProps) {
       try {
         currentUser = await loginAnonymously();
       } catch (e) {
-        alert("Para unirte es necesario estar autenticado. Por favor, usa Google Login.");
+        alert("Para unirte es necesario estar autenticado.");
         return;
       }
     }
@@ -216,160 +123,173 @@ export default function Lobby({ onJoin, user }: LobbyProps) {
     }
   };
 
-  return (
-    <div className={`flex flex-col items-center justify-center min-h-screen p-6 transition-colors duration-500 relative overflow-hidden ${theme === 'sketchy' ? 'watercolor-bg' : 'bg-slate-950'}`}>
-      <SketchyFilters />
-      
-      {/* Artistic Decorations for Sketchy Theme */}
-      {theme === 'sketchy' && (
-        <>
-          <TornEdge position="top" />
-          <TornEdge position="bottom" />
-          <NotebookCorner />
-          
-          <PaperStain className="top-10 left-10 w-64 h-64 opacity-40 rotate-12" color="rgba(121, 85, 72, 0.08)" />
-          <PaperStain className="bottom-20 right-1/4 w-80 h-80 opacity-30 -rotate-6" color="rgba(76, 175, 80, 0.05)" />
-          <PaperStain className="top-1/3 right-10 w-48 h-48 opacity-25 rotate-45" color="rgba(33, 150, 243, 0.05)" />
-          
-          <PencilSketch type="wolf" className="absolute top-24 right-24 w-40 h-40 opacity-20 rotate-12" />
-          <PencilSketch type="moon" className="absolute bottom-32 left-12 w-24 h-24 opacity-15 rotate-[-15deg]" />
-          <Scribble className="top-1/4 left-1/4 w-64 h-64 text-amber-900/5 rotate-45" />
-          <Scribble className="bottom-1/3 right-1/3 w-48 h-48 text-amber-900/10 -rotate-12" />
-        </>
-      )}
+  const handleDevMode = async () => {
+    let currentUser = user;
+    if (!currentUser) {
+      try {
+        currentUser = await loginAnonymously();
+      } catch (e) {
+        return;
+      }
+    }
+    if (!currentUser) return;
 
+    setIsCreating(true);
+    try {
+      const devCode = `DEV-${currentUser.uid.substring(0, 5).toUpperCase()}`; 
+      const q = query(collection(db, 'games'), where('lobbyCode', '==', devCode));
+      const snap = await getDocs(q);
+      
+      let gameId: string;
+      if (snap.empty) {
+        const gameRef = doc(collection(db, 'games'));
+        gameId = gameRef.id;
+        await setDoc(gameRef, {
+          lobbyCode: devCode,
+          status: 'waiting',
+          phase: 'lobby',
+          moderatorId: currentUser.uid,
+          narration: '¡MODO DEV ACTIVADO!',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          lastStartTime: Date.now(),
+          nightTargets: { werewolfTarget: '', witchHeal: false, witchKill: '', cupidCouples: [] },
+          witchHealUsed: false,
+          witchPoisonUsed: false,
+          cupidUsed: false,
+        });
+      } else {
+        gameId = snap.docs[0].id;
+      }
+
+      await setDoc(doc(db, `games/${gameId}/players`, currentUser.uid), {
+        uid: currentUser.uid,
+        displayName: name || "Dev Player",
+        isAlive: true,
+        isModerator: true,
+        joinedAt: Date.now(),
+      });
+
+      const botNames = ['🐺 Lobo', '🧙‍♀️ Bruja', '💘 Cupido', '👮‍♂️ Comisario', '👨‍🌾 Aldeano'];
+      for (let i = 0; i < botNames.length; i++) {
+        const botId = `bot_${i}`;
+        await setDoc(doc(db, `games/${gameId}/players`, botId), {
+          uid: botId,
+          displayName: botNames[i],
+          isAlive: true,
+          isModerator: false,
+          joinedAt: Date.now() + i + 1,
+        });
+      }
+
+      onJoin(gameId);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen p-6 relative">
       <motion.div 
-        initial={{ scale: 0.95, opacity: 0 }}
+        initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="w-full max-w-4xl relative z-10"
+        className="w-full max-w-4xl"
       >
-        <HandDrawn 
-          className={`w-full p-8 sm:p-12 rounded-[2.5rem] flex flex-col md:flex-row gap-12 ${
-            theme === 'sketchy' ? 'bg-transparent shadow-none' : 'bg-slate-900 border border-slate-800 shadow-[0_0_80px_rgba(79,70,229,0.15)]'
-          }`}
-          fill={theme === 'sketchy' ? 'transparent' : 'transparent'}
-          stroke={theme === 'sketchy' ? '#2c1810' : '#1e1b4b'}
-        >
-          <div className="flex-1 space-y-8 relative">
-            <div className="flex items-center gap-4 relative z-10">
-              <HandDrawn type="box" fill={theme === 'sketchy' ? '#e8dec5' : '#4f46e533'} className="p-3 rounded-2xl">
-                <Shield className={`w-8 h-8 ${theme === 'sketchy' ? 'text-[#5d4037]' : 'text-indigo-400'}`} />
-              </HandDrawn>
+        <div className="bg-white/80 backdrop-blur-md p-8 md:p-12 rounded-[2.5rem] border-4 border-[#4a3728]/10 shadow-[0_20px_50px_rgba(74,55,40,0.1)] flex flex-col md:flex-row gap-12">
+          <div className="flex-1 space-y-8">
+            <div className="flex items-center gap-4">
+              <div className="p-4 bg-orange-100 rounded-3xl">
+                <Shield className="w-10 h-10 text-orange-600" />
+              </div>
               <div>
-                <h1 className={`text-4xl tracking-tighter italic leading-none ${theme === 'sketchy' ? 'text-[#2c1810] font-typewriter' : 'text-white font-display font-black uppercase'}`}>
-                  PUEBLO <span className={`${theme === 'sketchy' ? 'text-amber-800' : 'text-indigo-500'}`}>DUERME</span>
+                <h1 className="text-5xl font-black tracking-tight text-[#4a3728] font-display uppercase leading-tight">
+                  Pueblo <span className="text-orange-600 italic">Duerme</span>
                 </h1>
-                <p className={`text-[10px] font-black uppercase tracking-widest mt-1 ${theme === 'sketchy' ? 'text-amber-900/60 font-chat text-lg' : 'text-slate-500'}`}>Multiplayer Mystery Game</p>
+                <p className="text-xs font-bold uppercase tracking-[0.3em] text-[#4a3728]/40">Misterio en el Tablero</p>
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="space-y-2">
-                <label className={`text-[10px] font-black uppercase tracking-widest ml-1 ${theme === 'sketchy' ? 'text-amber-900/60 font-chat text-lg' : 'text-slate-500'}`}>Tu Identidad</label>
+                <label className="text-[10px] font-black uppercase tracking-widest ml-1 text-[#4a3728]/60">Tu Nombre de Jugador</label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Nombre de jugador..."
-                  className={`w-full border rounded-2xl px-5 py-4 transition-all shadow-inner ${
-                    theme === 'sketchy' 
-                      ? 'bg-amber-50/50 border-amber-900/20 text-[#2c1810] placeholder:text-amber-900/30 font-chat text-2xl rotate-[-0.5deg]' 
-                      : 'bg-slate-950 border-slate-800 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600/50 font-bold'
-                  }`}
+                  placeholder="Ej: LoboSolitario"
+                  className="w-full bg-[#fdfbf7] border-2 border-[#4a3728]/10 rounded-2xl px-6 py-4 text-[#2c3e50] font-bold text-lg focus:outline-none focus:border-orange-600/50 focus:ring-4 focus:ring-orange-600/5 transition-all shadow-sm"
                 />
               </div>
 
-              <div className="pt-4 flex flex-col gap-3">
-                <HandDrawn 
-                  type="button" 
-                  fill={theme === 'sketchy' ? '#fffbeb' : 'transparent'} 
-                  fillStyle="solid"
-                  className={`w-full transition-transform ${theme === 'sketchy' ? 'rotate-1 hover:rotate-0' : ''}`}
-                  stroke={theme === 'sketchy' ? '#78350f' : '#4f46e5'}
+              <div className="pt-4 flex flex-col gap-4">
+                <button
+                  onClick={handleCreate}
+                  disabled={!name || isCreating}
+                  className="group relative w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed py-5 rounded-2xl transition-all active:scale-[0.98] shadow-[0_10px_20px_rgba(234,88,12,0.2)]"
                 >
-                  <button
-                    onClick={handleCreate}
-                    disabled={!name || isCreating}
-                    className={`w-full flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed py-5 rounded-2xl transition-all active:scale-[0.98] uppercase tracking-widest text-sm font-black ${
-                      theme === 'sketchy' ? 'text-amber-900 font-typewriter' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_30px_rgba(79,70,229,0.3)]'
-                    }`}
-                  >
-                    <Play className={`w-5 h-5 ${theme === 'sketchy' ? 'text-amber-600' : 'fill-current'}`} />
-                    {isCreating ? 'Iniciando...' : 'CREAR NUEVO PUEBLO'}
-                  </button>
-                </HandDrawn>
+                  <div className="flex items-center justify-center gap-3">
+                    <Play className="w-6 h-6 text-white fill-current transition-transform group-hover:scale-110" />
+                    <span className="text-white font-black uppercase tracking-widest text-sm">Crear Partida</span>
+                  </div>
+                </button>
                 
-                {!user?.email && (
-                  <button
-                    onClick={loginWithGoogle}
-                    className={`w-full flex items-center justify-center gap-2 text-[10px] transition-colors font-black uppercase ${theme === 'sketchy' ? 'text-amber-900/60 hover:text-amber-900 font-chat text-base' : 'text-slate-500 hover:text-white'}`}
-                  >
-                    <LogIn className="w-3 h-3" /> O CONÉCTATE CON GOOGLE PARA GUARDAR PERFIL
-                  </button>
-                )}
+                <button
+                  onClick={() => loginWithGoogle()}
+                  className="w-full flex items-center justify-center gap-2 text-[10px] text-[#4a3728]/50 hover:text-orange-600 transition-colors font-black uppercase"
+                >
+                  <LogIn className="w-4 h-4" /> O conéctate con Google
+                </button>
               </div>
             </div>
           </div>
 
-          <div className={`w-[1px] hidden md:block self-stretch ${theme === 'sketchy' ? 'bg-amber-900/10' : 'bg-slate-800'}`}></div>
+          <div className="w-px hidden md:block self-stretch bg-[#4a3728]/10"></div>
 
           <div className="flex-1 space-y-8 flex flex-col justify-center">
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="space-y-2">
-                <label className={`text-[10px] font-black uppercase tracking-widest ml-1 ${theme === 'sketchy' ? 'text-amber-900/60 font-chat text-lg' : 'text-slate-500'}`}>Unirse a la partida</label>
+                <label className="text-[10px] font-black uppercase tracking-widest ml-1 text-[#4a3728]/60">Unirse con Código</label>
                 <input
                   type="text"
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase())}
                   placeholder="CÓDIGO"
-                  className={`w-full text-center tracking-[0.6em] transition-all shadow-inner border rounded-2xl px-5 py-4 ${
-                    theme === 'sketchy' 
-                      ? 'bg-amber-50/50 border-amber-900/20 text-[#2c1810] placeholder:text-amber-900/30 font-typewriter text-xl rotate-[0.5deg]' 
-                      : 'bg-slate-950 border-slate-800 text-white placeholder:text-slate-700 font-mono text-2xl focus:outline-none focus:ring-2 focus:ring-slate-700'
-                  }`}
+                  className="w-full text-center tracking-[0.6em] bg-[#fdfbf7] border-2 border-[#4a3728]/10 rounded-2xl px-6 py-5 text-[#2c3e50] font-mono text-3xl focus:outline-none focus:border-orange-600/50 transition-all font-black uppercase"
                 />
               </div>
 
-              <HandDrawn 
-                type="button" 
-                fill={theme === 'sketchy' ? '#fef3c7' : 'transparent'} 
-                fillStyle="solid"
-                className={`w-full transition-transform ${theme === 'sketchy' ? '-rotate-1 hover:rotate-0' : ''}`}
-                stroke={theme === 'sketchy' ? '#78350f' : '#334155'}
+              <button
+                onClick={handleJoin}
+                disabled={!name || !code || isJoining}
+                className="w-full bg-[#4a3728] hover:bg-[#2c1810] disabled:opacity-50 disabled:cursor-not-allowed py-5 rounded-2xl transition-all shadow-[0_10px_20px_rgba(74,55,40,0.1)] active:scale-[0.98]"
               >
-                <button
-                  onClick={handleJoin}
-                  disabled={!name || !code || isJoining}
-                  className={`w-full flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed font-black py-5 rounded-2xl transition-all active:scale-[0.98] uppercase tracking-widest text-sm ${
-                    theme === 'sketchy' ? 'text-amber-900 font-typewriter' : 'bg-slate-800 hover:bg-slate-700 text-white'
-                  }`}
-                >
-                  <UserPlus className={`w-5 h-5 ${theme === 'sketchy' ? 'text-amber-600' : ''}`} />
-                  {isJoining ? 'Buscando...' : 'UNIRSE AL PUEBLO'}
-                </button>
-              </HandDrawn>
+                <div className="flex items-center justify-center gap-3">
+                  <UserPlus className="w-6 h-6 text-white" />
+                  <span className="text-white font-black uppercase tracking-widest text-sm">Entrar al Pueblo</span>
+                </div>
+              </button>
             </div>
 
-            <div className={`pt-4 border-t ${theme === 'sketchy' ? 'border-amber-900/10' : 'border-slate-800/50'}`}>
+            <div className="pt-6 border-t border-[#4a3728]/10">
               <button
                 onClick={handleDevMode}
-                className={`w-full flex items-center justify-center gap-3 transition-all border text-[10px] uppercase tracking-widest py-3 rounded-xl font-bold ${
-                  theme === 'sketchy' ? 'bg-amber-100/50 border-amber-900/20 text-amber-900 hover:bg-amber-200' : 'bg-slate-950 hover:bg-indigo-950 text-indigo-500 border-indigo-500/20'
-                }`}
+                className="w-full flex items-center justify-center gap-3 bg-[#fdfbf7] hover:bg-orange-50 text-orange-700/60 hover:text-orange-700 border-2 border-orange-600/10 py-3 rounded-2xl transition-all text-xs font-black uppercase tracking-widest"
               >
                 <Terminal className="w-4 h-4" />
-                Dev Quick Start
+                Modo Desarrollador
               </button>
             </div>
           </div>
-        </HandDrawn>
+        </div>
 
         <div className="mt-12 flex items-center justify-center gap-8">
-          <div className={`h-px flex-1 ${theme === 'sketchy' ? 'bg-amber-900/10' : 'bg-slate-800'}`} />
-          <p className={`text-[9px] font-black uppercase tracking-[0.4em] ${theme === 'sketchy' ? 'text-amber-900/30' : 'text-slate-600'}`}>
-            Online Multiplayer • <span className={theme === 'sketchy' ? 'text-amber-800/40' : 'text-indigo-400/50'}>Anonymous Support Enabled</span>
+          <div className="h-0.5 flex-1 bg-[#4a3728]/5" />
+          <p className="text-[9px] font-black uppercase tracking-[0.5em] text-[#4a3728]/30">
+            Divertido • Amigable • Multijugador
           </p>
-          <div className={`h-px flex-1 ${theme === 'sketchy' ? 'bg-amber-900/10' : 'bg-slate-800'}`} />
+          <div className="h-0.5 flex-1 bg-[#4a3728]/5" />
         </div>
       </motion.div>
     </div>

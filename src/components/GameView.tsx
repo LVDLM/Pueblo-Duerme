@@ -5,11 +5,8 @@ import { doc, updateDoc, setDoc, collection, writeBatch, addDoc, getDoc, getDocs
 import { motion, AnimatePresence } from 'motion/react';
 import { CARD_URLS, getRoleCard } from '../constants/cards';
 import { GamePhase, Role } from '../types/game';
-import { Users, LogOut, MessageSquare, Shield, Moon, Sun, Heart, Skull, Zap, Send, Bot, Paintbrush } from 'lucide-react';
+import { Users, LogOut, MessageSquare, Shield, Moon, Sun, Heart, Skull, Zap, Send, Bot } from 'lucide-react';
 import { useState, FormEvent, useEffect, useRef, useMemo } from 'react';
-import { useTheme } from '../context/ThemeContext';
-import { HandDrawn, SketchyFilters, TornEdge, NotebookCorner, PaperStain, PencilSketch, Scribble } from './ThemeManager';
-// @ts-ignore
 import { useAIAgents } from '../ai/hooks/useAIAgents';
 
 interface GameViewProps {
@@ -38,7 +35,6 @@ const PHASE_LABELS: Record<GamePhase, string> = {
 
 export default function GameView({ gameId, user, onLeave }: GameViewProps) {
   const { game, players, messages, mySecret, allSecrets, loading } = useGameData(gameId, user.uid);
-  const { theme } = useTheme();
   const [chatMsg, setChatMsg] = useState('');
   const [showRole, setShowRole] = useState(false);
   const [isAddingBot, setIsAddingBot] = useState(false);
@@ -817,63 +813,41 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
   // AI Auto-Turns (Moderator Logic) - Moved to top to avoid Rules of Hooks violations
 
   return (
-    <div className={`transition-colors duration-500 h-screen flex flex-col p-6 font-sans overflow-hidden relative ${theme === 'sketchy' ? 'watercolor-bg text-[#2c1810]' : 'bg-slate-950 text-slate-200'}`}>
-      <SketchyFilters />
+    <div className="h-screen flex flex-col p-6 font-sans overflow-hidden relative bg-[#fdfbf7] text-[#2c3e50]">
+      {/* Background and particle effects are handled in App.tsx wrapper */}
       
-      {/* Background Decorations for Sketchy Theme */}
-      {theme === 'sketchy' && (
-        <>
-          <TornEdge position="top" />
-          <TornEdge position="bottom" />
-          <NotebookCorner />
-          
-          <PaperStain className="top-1/4 right-[-50px] w-96 h-96 opacity-25" color="rgba(121, 85, 72, 0.12)" />
-          <PaperStain className="bottom-10 left-1/4 w-[500px] h-[500px] opacity-15" color="rgba(37, 99, 235, 0.05)" />
-          
-          <PencilSketch type="wolf" className="absolute top-40 right-10 w-24 h-24 opacity-10 rotate-[15deg]" />
-          <PencilSketch type="moon" className="absolute bottom-40 left-10 w-24 h-24 opacity-10 rotate-[-10deg]" />
-          <Scribble className="top-1/3 left-10 w-64 h-64 text-amber-900/5 rotate-90" />
-          <Scribble className="bottom-1/4 right-1/4 w-80 h-80 text-amber-900/5 rotate-12" />
-        </>
-      )}
-
       {/* Header Section */}
-      <HandDrawn 
-        className={`flex justify-between items-center mb-6 h-20 px-8 shrink-0 ${theme === 'sketchy' ? 'bg-transparent shadow-none' : 'bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl'}`}
-        fill="transparent"
-        stroke={theme === 'sketchy' ? '#2c1810' : '#1e1b4b'}
-      >
+      <div className="flex justify-between items-center mb-6 h-20 px-8 shrink-0 bg-white/80 backdrop-blur-md border-4 border-[#4a3728]/10 rounded-[2rem] shadow-xl relative z-20">
         <div className="flex items-center gap-4">
           <div className={`h-3 w-3 rounded-full animate-pulse ${game.status === 'playing' ? 'bg-red-600' : 'bg-emerald-500'}`}></div>
-          <h1 className={`text-2xl leading-none italic ${theme === 'sketchy' ? 'text-[#2c1810] font-typewriter' : 'text-white font-display font-black uppercase tracking-widest'}`}>
-            Pueblo <span className={theme === 'sketchy' ? 'text-amber-800' : 'text-indigo-400'}>Duerme</span>
+          <h1 className="text-2xl font-black uppercase tracking-tight text-[#4a3728] font-display">
+            Pueblo <span className="text-orange-600 italic">Duerme</span>
           </h1>
         </div>
         
         <div className="flex items-center gap-6">
-          <HandDrawn fill={theme === 'sketchy' ? '#fffbeb' : '#1e293b'} className="px-4 py-2 rounded-xl hidden sm:block">
-            <span className={`text-[10px] uppercase text-slate-500 block font-black leading-none mb-1 ${theme === 'sketchy' ? 'font-chat text-lg py-1' : ''}`}>Código de Partida</span>
-            <span className={`text-lg font-bold tracking-widest leading-none uppercase ${theme === 'sketchy' ? 'text-amber-900 font-typewriter' : 'font-mono text-amber-400'}`}>{game.lobbyCode}</span>
-          </HandDrawn>
-          <div className={`${theme === 'sketchy' ? 'bg-amber-100/50 text-amber-900 border border-amber-900/20 font-typewriter' : 'bg-indigo-600 text-white shadow-indigo-900/20 font-black uppercase tracking-tighter'} px-6 py-2 rounded-xl shadow-lg text-xs sm:text-sm`}>
+          <div className="px-4 py-2 bg-[#fdfbf7] border-2 border-[#4a3728]/10 rounded-xl hidden sm:block">
+            <span className="text-[10px] uppercase text-[#4a3728]/50 block font-black leading-none mb-1">Código de Partida</span>
+            <span className="text-lg font-bold tracking-widest leading-none uppercase text-[#4a3728] font-mono">{game.lobbyCode}</span>
+          </div>
+          <div className="bg-[#4a3728] text-white px-6 py-2 rounded-xl shadow-lg text-xs sm:text-sm font-black uppercase tracking-widest">
             Fase: {PHASE_LABELS[game.phase] || game.phase}
           </div>
           <button 
             onClick={onLeave}
-            className={`p-2 rounded-xl transition-all border ${theme === 'sketchy' ? 'bg-white border-amber-900/20 text-amber-900 hover:bg-amber-50' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
+            className="p-2 rounded-xl transition-all border-2 border-[#4a3728]/10 bg-white text-[#4a3728] hover:bg-orange-50 hover:text-orange-600"
           >
             <LogOut className="w-5 h-5" />
           </button>
         </div>
-      </HandDrawn>
+      </div>
 
       {/* Main Game Area */}
       <main className="flex-1 grid grid-cols-12 gap-4 overflow-hidden min-h-0">
          {/* Table Area (Left) */}
-         <section className={`col-span-12 lg:col-span-8 p-6 rounded-[2rem] flex flex-col items-center overflow-y-auto min-h-0 relative ${theme === 'sketchy' ? 'bg-white/40 border border-amber-900/10' : 'bg-slate-900/50 border border-slate-800/50'}`}>
-            {theme === 'sketchy' && <PencilSketch type="wolf" className="absolute top-4 right-4 w-12 h-12 text-amber-900/10" />}
+         <section className="col-span-12 lg:col-span-8 p-6 rounded-[2rem] flex flex-col items-center overflow-y-auto min-h-0 relative bg-white/40 border-2 border-[#4a3728]/5 shadow-inner">
             {/* Phase / Narration */}
-            <div className={`mb-8 w-full text-center shrink-0 ${theme === 'sketchy' ? 'bg-amber-100/30 py-6 rounded-3xl border border-amber-900/10 rotate-1 shadow-sm' : ''}`}>
+            <div className="mb-8 w-full text-center shrink-0">
                <AnimatePresence mode="wait">
                   <motion.div
                     key={game.phase}
@@ -882,11 +856,11 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                     className="max-w-2xl mx-auto"
                   >
                     {isMyTurn && (
-                       <div className={`mb-2 inline-block px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest animate-bounce ${theme === 'sketchy' ? 'bg-amber-700 text-white font-typewriter' : 'bg-indigo-600 text-white shadow-lg'}`}>
+                       <div className="mb-2 inline-block px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest animate-bounce bg-orange-600 text-white shadow-lg">
                           ¡Tu turno ha comenzado!
                        </div>
                     )}
-                    <h3 className={`text-3xl md:text-4xl leading-tight ${theme === 'sketchy' ? 'text-[#2c1810] font-chat text-4xl italic px-4' : 'font-display font-black text-white px-4'}`}>
+                    <h3 className="text-3xl md:text-4xl leading-tight font-black text-[#4a3728] px-4">
                        "{game.narration}"
                     </h3>
                   </motion.div>
@@ -894,61 +868,59 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
             </div>
 
             {/* Players Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-6 w-full p-2">
                {players.sort((a,b) => b.joinedAt - a.joinedAt).map((p, idx) => {
                  const isMe = p.uid === user.uid;
                  const isActing = p.uid === (impersonateId || user.uid);
                  const canBeTarget = game.status === 'playing' && p.isAlive && !isActing;
                  
                  return (
-                   <HandDrawn 
+                   <motion.div 
                      key={p.uid} 
                      onClick={() => canBeTarget && handleAction(p.uid)}
-                     className={`relative border-2 rounded-2xl p-4 flex flex-col items-center justify-center transition-all group ${theme === 'sketchy' ? (idx % 2 === 0 ? 'rotate-1' : '-rotate-1') : 'shadow-xl'} ${canBeTarget ? 'hover:border-indigo-500 cursor-pointer' : (theme === 'sketchy' ? 'border-amber-900/10' : 'border-slate-800')} ${isActing ? (theme === 'sketchy' ? 'border-amber-500' : 'border-indigo-500') : ''} ${!p.isAlive ? 'opacity-50 grayscale' : ''} ${theme === 'sketchy' ? 'bg-white/40 shadow-none' : 'bg-slate-800/80'}`}
-                     fill={theme === 'sketchy' ? (isActing ? 'rgba(251,191,36,0.1)' : 'rgba(255,255,255,0.4)') : 'transparent'}
-                     stroke={theme === 'sketchy' ? (isActing ? '#d97706' : '#2c1810') : 'transparent'}
+                     whileHover={canBeTarget ? { scale: 1.02, y: -5 } : {}}
+                     className={`relative border-4 rounded-3xl p-6 flex flex-col items-center justify-center transition-all bg-white shadow-md ${canBeTarget ? 'hover:border-orange-500 cursor-pointer' : 'border-transparent'} ${isActing ? 'border-orange-600 shadow-orange-600/10' : ''} ${!p.isAlive ? 'opacity-40 grayscale' : ''}`}
                    >
                      {/* Labels */}
-                     <div className="absolute top-2 left-2 right-2 flex justify-between items-center px-1">
-                        {isMe && <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full text-white uppercase ${theme === 'sketchy' ? 'bg-amber-600' : 'bg-indigo-500'}`}>TÚ</span>}
-                        {p.uid === impersonateId && <span className="bg-amber-500 text-[8px] font-black px-1.5 py-0.5 rounded-full text-black uppercase">SUPLANTADO</span>}
-                        {p.isModerator && <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full border uppercase ${theme === 'sketchy' ? 'bg-amber-50 border-amber-500/30 text-amber-900' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>MOD</span>}
+                     <div className="absolute top-3 left-3 right-3 flex justify-between items-center">
+                        {isMe && <span className="text-[8px] font-black px-2 py-1 rounded-full bg-orange-600 text-white uppercase tracking-tighter shadow-sm">TÚ</span>}
+                        {p.uid === impersonateId && <span className="bg-amber-400 text-[8px] font-black px-2 py-1 rounded-full text-[#4a3728] uppercase tracking-tighter shadow-sm">SUPLANTADO</span>}
+                        {p.isModerator && <span className="text-[8px] font-black px-2 py-1 rounded-full bg-[#4a3728] text-white uppercase tracking-tighter shadow-sm">MOD</span>}
                         <div className="flex items-center gap-1">
-                               {( (isMod && game.nightTargets?.cupidCouples?.includes(p.uid)) || 
-                                  (activeSecret?.loverId === p.uid) || 
-                                  (activeSecret?.role === 'cupid' && game.nightTargets?.cupidCouples?.includes(p.uid))
-                               ) && <Heart className={`w-3.5 h-3.5 fill-current shadow-[0_0_8px_rgba(236,72,153,0.5)] ${theme === 'sketchy' ? 'text-pink-600' : 'text-pink-500'}`} />}
-                               {isMod && game.nightTargets?.werewolfTarget === p.uid && <Skull className={`w-3.5 h-3.5 fill-current animate-pulse mr-1 ${theme === 'sketchy' ? 'text-red-700' : 'text-red-500'}`} />}
-                            </div>
-                        
+                                {( (isMod && game.nightTargets?.cupidCouples?.includes(p.uid)) || 
+                                   (activeSecret?.loverId === p.uid) || 
+                                   (activeSecret?.role === 'cupid' && game.nightTargets?.cupidCouples?.includes(p.uid))
+                                ) && <Heart className="w-4 h-4 fill-rose-500 text-rose-500 shadow-sm" />}
+                                {isMod && game.nightTargets?.werewolfTarget === p.uid && <Skull className="w-4 h-4 fill-red-600 text-red-600 animate-pulse" />}
+                             </div>
                      </div>
 
                      {/* Voting Indicator */}
                      {game.phase === 'day_vote' && players.filter(v => v.vote === p.uid).length > 0 && (
-                       <div className="absolute -top-2 -right-2 z-10 bg-indigo-600 text-white text-[10px] font-black px-2 py-1 rounded-full shadow-lg border border-indigo-400">
+                       <div className="absolute -top-3 -right-3 z-10 bg-[#4a3728] text-white text-xs font-black w-8 h-8 flex items-center justify-center rounded-full shadow-lg border-2 border-white">
                           {players.filter(v => v.vote === p.uid).length}
                        </div>
                      )}
 
                      {/* Target Marker */}
                      {((activeSecret?.role === 'witch' && game.phase === 'witch_turn') || isMod) && game.nightTargets?.werewolfTarget === p.uid && (
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 bg-red-600 text-white text-[8px] font-black px-2 py-0.5 rounded-full border border-red-400 whitespace-nowrap">
-                           VÍCTIMA LOBOS (NARRADOR)
+                        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-20 bg-red-600 text-white text-[8px] font-black px-3 py-1 rounded-full border-2 border-white whitespace-nowrap shadow-md">
+                           VÍCTIMA LOBOS
                         </div>
                      )}
 
                      {/* Card Graphic */}
                      <div className={`
-                        relative w-24 h-32 md:w-28 md:h-36 rounded-xl border-2 transition-all duration-500 preserve-3d mb-3
+                        relative w-24 h-32 md:w-28 md:h-36 rounded-2xl border-4 transition-all duration-500 preserve-3d mb-3 shadow-sm
                         ${(showRole && isActing) || !p.isAlive ? 'rotate-y-180' : ''}
-                        ${p.isAlive ? 'border-slate-700 bg-indigo-950' : 'border-red-900/50 bg-red-950/20'}
+                        ${p.isAlive ? 'border-[#4a3728]/10 bg-[#fdfbf7]' : 'border-red-900/10 bg-red-50/50'}
                      `}>
                         {/* Back */}
                         <div className="absolute inset-0 backface-hidden flex items-center justify-center rounded-xl overflow-hidden">
                            <img src={CARD_URLS.back} className="w-full h-full object-cover" />
                            {!p.isAlive && (
-                              <div className="absolute inset-0 bg-red-950/60 flex items-center justify-center">
-                                 <Skull className="w-8 h-8 text-red-500/80" />
+                              <div className="absolute inset-0 bg-red-950/20 flex items-center justify-center">
+                                 <Skull className="w-10 h-10 text-red-600/80" />
                               </div>
                            )}
                         </div>
@@ -961,11 +933,11 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                                  className="w-full h-full object-cover" 
                                  referrerPolicy="no-referrer"
                               />
-                              <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-end p-2 text-center">
-                                 <span className="text-[8px] font-black text-white/70 uppercase leading-none mb-1">
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col items-center justify-end p-2 text-center pb-4">
+                                 <span className="text-[7px] font-black text-white/70 uppercase leading-none mb-1 tracking-widest">
                                     {!p.isAlive ? 'Revelación' : isActing ? 'TU ROL' : 'SOPLO'}
                                  </span>
-                                 <span className="text-sm font-black text-white uppercase leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                                 <span className="text-sm font-black text-white uppercase leading-tight tracking-tight">
                                     {(p.revealedRole || allSecrets[p.uid]?.role || activeSecret?.role) === 'werewolf' ? 'LOBO' : 
                                      (p.revealedRole || allSecrets[p.uid]?.role || activeSecret?.role) === 'witch' ? 'BRUJA' : 
                                      (p.revealedRole || allSecrets[p.uid]?.role || activeSecret?.role) === 'cupid' ? 'CUPIDO' : 'ALDEANO'}
@@ -975,19 +947,19 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                         )}
                      </div>
 
-                     <span className={`text-sm truncate w-full text-center ${theme === 'sketchy' ? 'font-chat text-2xl text-amber-950 px-2' : 'font-bold text-slate-300'} ${!p.isAlive ? 'text-red-700 decoration-red-700/50 line-through' : ''}`}>
+                     <span className={`text-base font-black truncate w-full text-center text-[#4a3728] ${!p.isAlive ? 'text-red-700/50 decoration-red-700/30 line-through' : ''}`}>
                         {p.displayName}
                       </span>
-                      {!p.isAlive && <span className={`text-[10px] font-black uppercase mt-1 ${theme === 'sketchy' ? 'text-red-900 font-typewriter' : 'text-red-500'}`}>ELIMINADO</span>}
+                      {!p.isAlive && <span className="text-[8px] font-black uppercase mt-1 text-red-600 tracking-widest">ELIMINADO</span>}
                      {isDev && p.uid !== user.uid && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); setImpersonateId(impersonateId === p.uid ? null : p.uid); setIsDevNarratorMode(false); }}
-                          className={`mt-2 text-[8px] font-black uppercase px-2 py-1 rounded-lg transition-all ${impersonateId === p.uid ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-400 hover:text-white'}`}
+                          className={`mt-4 text-[7px] font-black uppercase px-4 py-2 rounded-xl transition-all shadow-sm ${impersonateId === p.uid ? 'bg-orange-600 text-white' : 'bg-[#4a3728]/10 text-[#4a3728] hover:bg-orange-600 hover:text-white'}`}
                         >
                            {impersonateId === p.uid ? 'SOLTAR' : 'SUPLANTAR'}
                         </button>
                      )}
-                   </HandDrawn>
+                   </motion.div>
                  );
                })}
             </div>
@@ -996,12 +968,8 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
          {/* Sidebar (Right) */}
          <aside className="col-span-12 lg:col-span-4 flex flex-col gap-4 min-h-0">
             {/* Narrative / Chat Box */}
-            <HandDrawn 
-              className={`flex-1 bg-slate-900 border border-slate-800 rounded-[3rem] p-6 flex flex-col shadow-inner overflow-hidden min-h-0 ${theme === 'sketchy' ? 'bg-white/40 border-amber-900/10 shadow-none' : ''}`}
-              fill={theme === 'sketchy' ? 'rgba(255,255,255,0.4)' : 'transparent'}
-              stroke={theme === 'sketchy' ? '#2c1810' : '#1e1b4b'}
-            >
-              <h3 className={`text-[10px] font-black uppercase tracking-[0.2em] mb-4 flex items-center gap-2 ${theme === 'sketchy' ? 'text-amber-900' : 'text-slate-500'}`}>
+            <div className="flex-1 bg-white border-2 border-[#4a3728]/10 rounded-[3rem] p-6 flex flex-col shadow-inner overflow-hidden min-h-0">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-4 flex items-center gap-2 text-[#4a3728]/60">
                 <MessageSquare className="w-4 h-4" /> REGISTRO DEL PUEBLO
               </h3>
               
@@ -1031,24 +999,24 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                     return (
                       <div 
                         key={m.id} 
-                        className={`p-3 rounded-2xl border transition-all ${
+                        className={`p-4 rounded-2xl border-2 transition-all ${
                           isNarrator 
-                            ? (theme === 'sketchy' ? 'bg-amber-100 border-amber-300 shadow-sm' : 'bg-indigo-600/10 border-indigo-500/50 shadow-[0_0_15px_rgba(79,70,229,0.1)] scale-[1.02]')
+                            ? 'bg-orange-50 border-orange-100 shadow-sm'
                             : m.type === 'werewolf' 
-                              ? (theme === 'sketchy' ? 'bg-red-50 border-red-200' : 'bg-red-950/20 border-red-900/30')
-                              : (theme === 'sketchy' ? 'bg-white/60 border-amber-200' : 'bg-slate-950/40 border-slate-800')
+                              ? 'bg-red-50 border-red-100'
+                              : 'bg-[#fdfbf7] border-[#4a3728]/5'
                         }`}
                       >
-                         <span className={`text-[10px] font-black uppercase mb-1 block ${
+                         <span className={`text-[9px] font-black uppercase mb-1 block ${
                            isNarrator 
-                             ? (theme === 'sketchy' ? 'text-amber-800' : 'text-indigo-300') 
+                             ? 'text-orange-700' 
                              : m.type === 'werewolf' 
-                               ? 'text-red-600' 
-                               : (theme === 'sketchy' ? 'text-amber-700' : 'text-indigo-400')
+                               ? 'text-red-700' 
+                               : 'text-[#4a3728]/60'
                          }`}>
                             {m.senderName} {m.type === 'werewolf' && '🌑'}
                          </span>
-                         <p className={`text-sm font-chat break-words leading-relaxed ${isNarrator ? (theme === 'sketchy' ? 'text-amber-950 font-medium italic' : 'text-white font-medium italic') : (theme === 'sketchy' ? 'text-amber-900' : 'text-slate-300')}`}>
+                         <p className={`text-sm font-bold break-words leading-relaxed ${isNarrator ? 'text-orange-950 italic' : 'text-[#2c3e50]'}`}>
                             {m.text}
                          </p>
                       </div>
@@ -1056,7 +1024,7 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                  })}
                  <div ref={chatEndRef} />
                  {messages.length === 0 && (
-                    <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800/50 italic text-slate-500 text-xs border-l-4 border-l-amber-500 font-chat">
+                    <div className="bg-[#fdfbf7] p-4 rounded-2xl border-2 border-dashed border-[#4a3728]/10 italic text-[#4a3728]/40 text-xs font-bold">
                        "El silencio nocturno es absoluto. Solo el viento murmura entre las casas..."
                     </div>
                  )}
@@ -1067,31 +1035,21 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                    <input 
                      value={chatMsg}
                      onChange={(e) => setChatMsg(e.target.value)}
-                     placeholder={isDevNarratorMode ? "Habla como Narrador..." : "Susurra algo..."}
-                     className={`w-full border rounded-2xl px-5 py-4 text-sm font-chat transition-all shadow-xl ${
-                       theme === 'sketchy' 
-                         ? 'bg-white border-amber-900/20 text-amber-950 placeholder:text-amber-900/40 focus:ring-amber-500/30' 
-                         : 'bg-slate-950 border-slate-800 text-white placeholder:text-slate-600 focus:ring-indigo-600/50'
-                     }`}
+                     placeholder={isDevNarratorMode ? "Habla como Narrador..." : "Escribe un mensaje..."}
+                     className="w-full bg-[#fdfbf7] border-2 border-[#4a3728]/10 rounded-2xl px-5 py-4 text-sm font-bold focus:outline-none focus:border-orange-500/30 transition-all shadow-sm"
                    />
-                   <button type="submit" className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl transition-all shadow-lg active:scale-90 ${
-                     theme === 'sketchy' ? 'bg-amber-600 text-white hover:bg-amber-500' : 'bg-indigo-600 text-white hover:bg-indigo-500'
-                   }`}>
+                   <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-[#4a3728] text-white rounded-xl hover:bg-orange-600 transition-all shadow-md active:scale-90">
                       <Send className="w-4 h-4" />
                    </button>
                 </form>
               )}
-            </HandDrawn>
+            </div>
           </aside>
         </main>
 
        {/* Footer Controls */}
        <footer className="mt-6 flex flex-col lg:flex-row gap-4 h-auto lg:h-24 shrink-0">
-         <HandDrawn 
-           className={`flex-1 bg-slate-900 border border-slate-800 rounded-3xl flex flex-wrap items-center px-6 py-4 gap-6 min-w-0 shadow-2xl relative overflow-hidden ${theme === 'sketchy' ? 'bg-white/60 border-amber-900/20 shadow-none' : ''}`}
-           fill={theme === 'sketchy' ? 'rgba(255,255,255,0.6)' : 'transparent'}
-           stroke={theme === 'sketchy' ? '#2c1810' : '#1e1b4b'}
-         >
+         <div className="flex-1 bg-white border-4 border-[#4a3728]/10 rounded-[2rem] flex flex-wrap items-center px-6 py-4 gap-6 min-w-0 shadow-lg relative overflow-hidden">
            {/* Actions / Powers */}
            {((me?.isAlive && activeSecret) || isMod || isDev) && (
              <div className="flex items-center gap-6 overflow-x-auto scrollbar-hide w-full">
@@ -1279,23 +1237,23 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
                 </div>
              </div>
            )}
-         </HandDrawn>
+         </div>
 
-         <HandDrawn className={`w-full lg:w-64 bg-slate-900 border border-slate-800 rounded-3xl flex items-center justify-center gap-4 py-4 px-6 shadow-2xl shrink-0 ${theme === 'sketchy' ? 'bg-white/60 border-amber-900/20 shadow-none' : ''}`}>
+         <div className="w-full lg:w-64 bg-white border-4 border-[#4a3728]/10 rounded-[2rem] flex items-center justify-center gap-4 py-4 px-6 shadow-sm shrink-0">
            <div className="flex -space-x-2">
              {players.slice(0, 3).map((p, i) => (
-               <div key={i} className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-black uppercase shadow-lg ${theme === 'sketchy' ? 'bg-amber-100 border-amber-950/20 text-amber-700' : 'bg-slate-800 border-slate-950 text-slate-500'}`}>
+               <div key={i} className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black uppercase shadow-sm bg-[#4a3728] text-white">
                  {p.displayName[0]}
                </div>
              ))}
              {players.length > 3 && (
-               <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-black ${theme === 'sketchy' ? 'bg-amber-200 border-amber-950/20 text-amber-800' : 'bg-slate-950 border-slate-900 text-slate-400'}`}>
+               <div className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black bg-[#fdfbf7] text-[#4a3728]">
                  +{players.length - 3}
                </div>
              )}
            </div>
-           <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${theme === 'sketchy' ? 'text-amber-900/40' : 'text-slate-500'}`}>{players.length} EN LÍNEA</span>
-         </HandDrawn>
+           <span className="text-[10px] font-black uppercase tracking-widest leading-none text-[#4a3728]/40">{players.length} EN LÍNEA</span>
+         </div>
        </footer>
       {/* Night Overlay (Screen goes black) */}
       <AnimatePresence>
@@ -1306,14 +1264,14 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className={`fixed inset-0 z-50 flex flex-col items-center justify-center p-6 text-center ${theme === 'sketchy' ? 'watercolor-bg text-amber-950 font-typewriter' : 'bg-black text-white'}`}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 text-center bg-slate-950/95 text-white"
           >
-             <SketchyFilters />
-             <Moon className={`w-24 h-24 mb-8 animate-pulse ${theme === 'sketchy' ? 'text-amber-900' : 'text-indigo-500'}`} />
-             <h1 className={`text-4xl md:text-6xl font-black italic mb-4 uppercase ${theme === 'sketchy' ? 'font-typewriter' : 'font-display drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]'}`}>
+
+             <Moon className="w-24 h-24 mb-8 text-indigo-500 animate-pulse" />
+             <h1 className="text-4xl md:text-6xl font-black italic mb-4 uppercase font-display drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]">
                EL PUEBLO DUERME
              </h1>
-             <p className={`max-w-md ${theme === 'sketchy' ? 'font-chat text-3xl text-amber-900/70' : 'text-slate-400 font-bold'}`}>{game.narration}</p>
+             <p className="max-w-md text-slate-400 font-bold">{game.narration}</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1418,30 +1376,27 @@ export default function GameView({ gameId, user, onLeave }: GameViewProps) {
           <motion.div 
             initial={{ opacity: 0, backdropFilter: 'blur(0px)' }}
             animate={{ opacity: 1, backdropFilter: 'blur(20px)' }}
-            className={`fixed inset-0 z-[60] flex flex-col items-center justify-center p-6 text-center ${theme === 'sketchy' ? 'bg-amber-50/90' : 'bg-slate-950/80'}`}
+            className="fixed inset-0 z-[150] flex flex-col items-center justify-center p-6 text-center bg-orange-950/40"
           >
-             <HandDrawn
-               className={`p-12 rounded-[3rem] max-w-lg ${theme === 'sketchy' ? 'bg-transparent shadow-none' : 'bg-slate-900 border-slate-800 shadow-[0_0_100px_rgba(79,70,229,0.2)]'}`}
-               fill="transparent"
-               stroke={theme === 'sketchy' ? '#2c1810' : '#1e1b4b'}
-             >
-                <div className={`mb-6 inline-flex p-4 rounded-3xl ${game.winner === 'lobos' ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-500'}`}>
-                   {game.winner === 'lobos' ? <Skull className="w-16 h-16" /> : <Sun className="w-16 h-16" />}
+             <div className="bg-white border-[10px] border-[#4a3728] p-12 rounded-[4rem] max-w-2xl shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-4 bg-orange-600"></div>
+                <div className={`mb-8 inline-flex p-6 rounded-[2rem] shadow-lg ${game.winner === 'lobos' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                   {game.winner === 'lobos' ? <Skull className="w-20 h-20" /> : <Sun className="w-20 h-20" />}
                 </div>
-                <h1 className={`text-5xl italic mb-4 tracking-tighter uppercase leading-none ${theme === 'sketchy' ? 'text-amber-950 font-typewriter' : 'text-white font-display font-black'}`}>
+                <h1 className="text-5xl md:text-7xl italic mb-6 tracking-tighter uppercase leading-none text-[#4a3728] font-black font-display">
                   ¡PARTIDA <span className={game.winner === 'lobos' ? 'text-red-500' : 'text-emerald-500'}>FINALIZADA</span>!
                 </h1>
-                <p className={`text-xl font-bold mb-8 ${theme === 'sketchy' ? 'text-amber-900 font-chat text-3xl' : 'text-slate-300'}`}>{game.narration}</p>
+                <p className="text-2xl font-black mb-12 text-[#2c3e50] leading-tight max-w-md mx-auto italic">{game.narration}</p>
                 
                 {isMod && (
                   <button 
                     onClick={handleRestartGame}
-                    className={`w-full font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 ${theme === 'sketchy' ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-900/30 font-typewriter' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/40'}`}
+                    className="w-full font-black py-6 rounded-3xl shadow-xl transition-all active:scale-95 bg-orange-600 hover:bg-orange-500 text-white text-xl uppercase tracking-widest border-4 border-[#4a3728]/10"
                   >
                     JUGAR DE NUEVO
                   </button>
                 )}
-             </HandDrawn>
+             </div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -1,298 +1,124 @@
 import React, { useRef, useEffect } from 'react';
-import rough from 'roughjs';
-import { useTheme } from '../context/ThemeContext';
 
-interface HandDrawnProps {
-  children: React.ReactNode;
-  className?: string;
-  type?: 'box' | 'button' | 'circle';
-  fill?: string;
-  stroke?: string;
-  strokeWidth?: number;
-  roughness?: number;
-  fillStyle?: 'hachure' | 'solid' | 'zigzag' | 'cross-hatch' | 'dots' | 'sunburst' | 'dashed';
-}
-
-export const HandDrawn: React.FC<HandDrawnProps> = ({
-  children,
-  className = '',
-  type = 'box',
-  fill = 'transparent',
-  stroke = 'currentColor',
-  strokeWidth = 1.5,
-  roughness = 1.5,
-  fillStyle = 'hachure',
-}) => {
-  const { theme } = useTheme();
-  const containerRef = useRef<HTMLDivElement>(null);
+export const NetworkBackground: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (theme !== 'sketchy' || !canvasRef.current || !containerRef.current) return;
-
     const canvas = canvasRef.current;
-    const container = containerRef.current;
-    const rc = rough.canvas(canvas);
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (let entry of entries) {
-        const { width, height } = entry.contentRect;
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) continue;
-        ctx.clearRect(0, 0, width, height);
-
-        if (type === 'box' || type === 'button') {
-          rc.rectangle(2, 2, width - 4, height - 4, {
-            stroke,
-            strokeWidth,
-            roughness,
-            fill,
-            fillStyle: fill !== 'transparent' ? fillStyle : undefined,
-          });
-        } else if (type === 'circle') {
-          rc.circle(width / 2, height / 2, Math.min(width, height) - 4, {
-            stroke,
-            strokeWidth,
-            roughness,
-            fill,
-            fillStyle: fill !== 'transparent' ? fillStyle : undefined,
-          });
-        }
-      }
-    });
-
-    resizeObserver.observe(container);
-    return () => resizeObserver.disconnect();
-  }, [theme, type, fill, stroke, strokeWidth, roughness]);
-
-  if (theme === 'default') {
-    return <div className={className}>{children}</div>;
-  }
-
-  return (
-    <div ref={containerRef} className={`relative ${className}`}>
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 pointer-events-none"
-        style={{ zIndex: 0 }}
-      />
-      <div className="relative z-10">{children}</div>
-    </div>
-  );
-};
-
-export const SketchyFilters: React.FC = () => {
-  return (
-    <svg style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true">
-      <defs>
-        <filter id="pencil-filter">
-          <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="3" result="noise" />
-          <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" />
-        </filter>
-        <filter id="stain-filter">
-          <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="4" result="noise" />
-          <feDisplacementMap in="SourceGraphic" in2="noise" scale="15" />
-          <feGaussianBlur stdDeviation="1.5" />
-        </filter>
-      </defs>
-    </svg>
-  );
-};
-
-export const TornEdge: React.FC<{ position: 'top' | 'bottom'; className?: string }> = ({ position, className = '' }) => {
-  const { theme } = useTheme();
-  if (theme !== 'sketchy') return null;
-
-  return (
-    <div className={`absolute left-0 right-0 h-8 pointer-events-none z-20 ${position === 'top' ? 'top-0 rotate-180' : 'bottom-0'} ${className}`}>
-      <svg width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 100 20">
-        <defs>
-          <filter id="edge-wiggle">
-            <feTurbulence type="fractalNoise" baseFrequency="0.1" numOctaves="2" />
-            <feDisplacementMap in="SourceGraphic" scale="4" />
-          </filter>
-        </defs>
-        <path 
-          d="M0,0 L100,0 L100,10 Q50,20 0,10 Z" 
-          fill="#f2ead8" 
-          filter="url(#edge-wiggle)"
-          className="drop-shadow-sm" 
-        />
-      </svg>
-    </div>
-  );
-};
-
-export const NotebookCorner: React.FC<{ className?: string }> = ({ className = '' }) => {
-  const { theme } = useTheme();
-  if (theme !== 'sketchy') return null;
-
-  return (
-    <div className={`absolute bottom-0 right-0 w-16 h-16 pointer-events-none z-30 ${className}`}>
-      <svg width="100%" height="100%" viewBox="0 0 100 100">
-        {/* Shadow of the fold */}
-        <path d="M100,0 L0,100 L100,100 Z" fill="rgba(0,0,0,0.1)" />
-        {/* The folded paper */}
-        <path d="M100,0 L100,100 L0,100 Z" fill="#e8dec5" stroke="#d6c8a8" strokeWidth="1" />
-      </svg>
-    </div>
-  );
-};
-
-export const PaperStain: React.FC<{ className?: string; color?: string }> = ({ 
-  className = '', 
-  color = 'rgba(121, 85, 72, 0.08)' 
-}) => {
-  const { theme } = useTheme();
-  const seed = useRef(Math.random() * 1000);
-  if (theme !== 'sketchy') return null;
-
-  return (
-    <div className={`absolute pointer-events-none ${className}`} style={{ filter: 'url(#stain-filter)' }}>
-      <svg width="100%" height="100%" viewBox="0 0 200 200">
-        <circle cx="100" cy="100" r="50" fill={color} />
-      </svg>
-    </div>
-  );
-};
-
-export const PencilSketch: React.FC<{ type: 'wolf' | 'moon' | 'skull'; className?: string }> = ({ type, className = '' }) => {
-  const { theme } = useTheme();
-  if (theme !== 'sketchy') return null;
-
-  const paths = {
-    wolf: "M20,60 C30,40 50,30 80,40 C70,60 50,80 20,60 M30,55 L35,50 M45,52 L50,48",
-    moon: "M20,50 A30,30 0 1,1 80,50 A20,20 0 1,0 20,50",
-    skull: "M30,30 Q30,10 50,10 Q70,10 70,30 L70,60 Q70,75 50,75 Q30,75 30,60 Z M40,40 A5,5 0 1,0 40.1,40 M60,40 A5,5 0 1,0 60.1,40",
-  };
-
-  return (
-    <svg 
-      viewBox="0 0 100 100" 
-      className={`pointer-events-none transition-opacity ${className}`} 
-      style={{ filter: 'url(#pencil-filter)', opacity: 0.6 }}
-    >
-       <path 
-         d={paths[type]} 
-         fill="none" 
-         stroke="currentColor" 
-         strokeWidth="2" 
-         strokeLinecap="round"
-       />
-    </svg>
-  );
-};
-
-export const Scribble: React.FC<{ className?: string }> = ({ className = '' }) => {
-  const { theme } = useTheme();
-  if (theme !== 'sketchy') return null;
-
-  return (
-    <svg 
-      viewBox="0 0 100 100" 
-      className={`absolute pointer-events-none ${className}`} 
-      style={{ filter: 'url(#pencil-filter)', opacity: 0.3 }}
-    >
-      <path 
-        d="M10,20 Q30,10 50,20 T90,20 M20,40 C40,30 60,50 80,40" 
-        fill="none" 
-        stroke="currentColor" 
-        strokeWidth="1" 
-        strokeDasharray="2 2"
-      />
-    </svg>
-  );
-};
-
-export const StandardFractalBackground: React.FC = () => {
-  const { theme } = useTheme();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    if (theme !== 'default' || !canvasRef.current) return;
-
-    const canvas = canvasRef.current;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     let animationFrameId: number;
-    let time = 0;
+    let particles: any[] = [];
+    const particleCount = 100;
+    const connectionDistance = 150;
+    const mouse = { x: -100, y: -100, radius: 150 };
 
     const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     };
 
-    window.addEventListener('resize', resize);
-    resize();
+    class Particle {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      size: number;
 
-    const drawLine = (x1: number, y1: number, x2: number, y2: number, color: string, width: number) => {
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width;
-      ctx.stroke();
-    };
+      constructor() {
+        this.x = Math.random() * canvas!.width;
+        this.y = Math.random() * canvas!.height;
+        this.vx = (Math.random() - 0.5) * 0.5;
+        this.vy = (Math.random() - 0.5) * 0.5;
+        this.size = Math.random() * 2 + 1;
+      }
 
-    const drawFractal = (x: number, y: number, length: number, angle: number, depth: number) => {
-      if (depth <= 0) return;
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
 
-      const x2 = x + length * Math.cos(angle);
-      const y2 = y + length * Math.sin(angle);
+        if (this.x < 0 || this.x > canvas!.width) this.vx *= -1;
+        if (this.y < 0 || this.y > canvas!.height) this.vy *= -1;
 
-      const alpha = depth / 10;
-      // Vibrant indigo/violet color with glow effect
-      const color = `rgba(99, 102, 241, ${alpha * 0.5})`; 
-      drawLine(x, y, x2, y2, color, depth * 0.4);
+        // Mouse interaction
+        const dx = mouse.x - this.x;
+        const dy = mouse.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < mouse.radius) {
+          const force = (mouse.radius - dist) / mouse.radius;
+          this.x -= dx * force * 0.02;
+          this.y -= dy * force * 0.02;
+        }
+      }
 
-      const newLength = length * 0.77;
-      const spread = 0.45 + Math.sin(time * 0.0006) * 0.15;
-      
-      drawFractal(x2, y2, newLength, angle - spread, depth - 1);
-      drawFractal(x2, y2, newLength, angle + spread, depth - 1);
+      draw() {
+        ctx!.beginPath();
+        ctx!.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx!.fillStyle = 'rgba(74, 55, 40, 0.2)'; // Soft wood brown
+        ctx!.fill();
+      }
+    }
+
+    const init = () => {
+      particles = [];
+      for (let i = 0; i < particleCount; i++) {
+        particles.push(new Particle());
+      }
     };
 
     const animate = () => {
-      time += 16;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      
-      const numSets = 3;
-      const baseLength = Math.min(canvas.width, canvas.height) * 0.18;
-      
-      for (let s = 0; s < numSets; s++) {
-        const offset = (s * Math.PI * 2) / numSets + time * 0.0001;
-        const numBranches = 3;
-        for (let i = 0; i < numBranches; i++) {
-          const rootAngle = (i * Math.PI * 2) / numBranches + offset;
-          drawFractal(centerX, centerY, baseLength, rootAngle, 9);
+      particles.forEach(p => {
+        p.update();
+        p.draw();
+      });
+
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < connectionDistance) {
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(74, 55, 40, ${0.1 * (1 - dist / connectionDistance)})`;
+            ctx.lineWidth = 1;
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.stroke();
+          }
         }
       }
-      
+
       animationFrameId = requestAnimationFrame(animate);
     };
 
+    const handleMouseMove = (e: MouseEvent) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    };
+
+    window.addEventListener('resize', resize);
+    window.addEventListener('mousemove', handleMouseMove);
+    resize();
+    init();
     animate();
 
     return () => {
       window.removeEventListener('resize', resize);
+      window.removeEventListener('mousemove', handleMouseMove);
       cancelAnimationFrame(animationFrameId);
     };
-  }, [theme]);
-
-  if (theme !== 'default') return null;
+  }, []);
 
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 pointer-events-none opacity-30"
-      style={{ zIndex: 0 }}
+      className="fixed inset-0 pointer-events-none z-0"
+      style={{ background: 'linear-gradient(to bottom, #fdfbf7, #f4f1ea)' }}
     />
   );
 };

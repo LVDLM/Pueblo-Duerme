@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { AgentManager } from '../agentManager.js';
+import { AgentManager } from '../agentManager';
 
 /**
  * @param {Object[]} aiPlayers - Lista de jugadores IA inicial

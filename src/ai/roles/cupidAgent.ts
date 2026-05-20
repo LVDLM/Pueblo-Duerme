@@ -3,7 +3,7 @@
  * Rol Cupido: En la primera noche elige a dos enamorados.
  */
 
-import { BaseAgent } from './baseAgent.js';
+import { BaseAgent } from './baseAgent';
 
 export class CupidAgent extends BaseAgent {
   constructor(config) {

@@ -3,7 +3,7 @@
  * Rol Lobo: Elige víctima nocturna.
  */
 
-import { BaseAgent } from './baseAgent.js';
+import { BaseAgent } from './baseAgent';
 
 export class WolfAgent extends BaseAgent {
   constructor(config) {

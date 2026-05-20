@@ -1,19 +1,18 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-export type ThemeType = 'default' | 'sketchy';
+export type ThemeType = 'default';
 
 interface ThemeContextType {
   theme: ThemeType;
-  setTheme: (theme: ThemeType) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [theme, setTheme] = useState<ThemeType>('default');
+  const [theme] = useState<ThemeType>('default');
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme }}>
+    <ThemeContext.Provider value={{ theme }}>
       {children}
     </ThemeContext.Provider>
   );

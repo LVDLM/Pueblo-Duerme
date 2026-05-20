@@ -4,11 +4,11 @@
  * Crea, inicializa y orquesta todos los agentes según la fase del juego.
  */
 
-import { VillagerAgent } from './roles/villagerAgent.js';
-import { WolfAgent } from './roles/wolfAgent.js';
-import { WitchAgent } from './roles/witchAgent.js';
-import { CupidAgent } from './roles/cupidAgent.js';
-import { filterGameState } from './utils/knowledgeFilter.js';
+import { VillagerAgent } from './roles/villagerAgent';
+import { WolfAgent } from './roles/wolfAgent';
+import { WitchAgent } from './roles/witchAgent';
+import { CupidAgent } from './roles/cupidAgent';
+import { filterGameState } from './utils/knowledgeFilter';
 
 // ─── Factoría de agentes ──────────────────────────────────────────────────────
 

@@ -3,7 +3,7 @@
  * Rol Aldeano: No tiene acción nocturna.
  */
 
-import { BaseAgent } from './baseAgent.js';
+import { BaseAgent } from './baseAgent';
 
 export class VillagerAgent extends BaseAgent {
   constructor(config) {
