@@ -1,0 +1,10 @@
+{
+  "projectId": "youtube2next",
+  "appId": "1:601761784633:web:7b66dff78b39b664213ee8",
+  "apiKey": "AIzaSyDEVpXziuBFxnu6ZGhaLesnRXaJkjstrS4",
+  "authDomain": "2next.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-3024e151-fc03-4cb3-86d0-0c464aa84bd5",
+  "storageBucket": "youtube2next.firebasestorage.app",
+  "messagingSenderId": "601761784633",
+  "measurementId": ""
+}

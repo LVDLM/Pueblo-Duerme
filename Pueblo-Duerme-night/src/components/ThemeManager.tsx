@@ -2,6 +2,107 @@ import React, { useRef, useEffect } from 'react';
 import rough from 'roughjs';
 import { useTheme } from '../context/ThemeContext';
 
+// ─── Night Theme: Canvas fractal de fondo ───────────────────────────────────
+export const NightFractalBackground: React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let pointObject: Record<string, { r: number; g: number; b: number }> = {};
+    let nowMax = 2;
+    const init = () => {
+      pointObject = {}; nowMax = 2;
+      for (let i = 0; i <= nowMax; i++)
+        for (let j = 0; j <= nowMax; j++)
+          pointObject[`${i}#${j}`] = { r: Math.random(), g: Math.random(), b: Math.random() };
+    };
+    const doStep = () => {
+      const nObj: typeof pointObject = {};
+      for (const k in pointObject) {
+        const [px, py] = k.split('#').map(Number);
+        nObj[`${px * 2}#${py * 2}`] = pointObject[k];
+      }
+      nowMax *= 2;
+      for (const k in nObj) {
+        const [x, y] = k.split('#').map(Number);
+        if (x !== nowMax && y !== nowMax) {
+          const x2 = x + 2, y2 = y + 2;
+          const a = nObj[k], b = nObj[`${x2}#${y}`], c = nObj[`${x}#${y2}`], d = nObj[`${x2}#${y2}`];
+          nObj[`${x+1}#${y}`] = {r:0,g:0,b:0}; nObj[`${x}#${y+1}`] = {r:0,g:0,b:0};
+          nObj[`${x2}#${y+1}`] = {r:0,g:0,b:0}; nObj[`${x+1}#${y2}`] = {r:0,g:0,b:0};
+          nObj[`${x+1}#${y+1}`] = {r:0,g:0,b:0};
+          for (const ch of ['r','g','b'] as const) {
+            const avg = (a[ch]+b[ch]+c[ch]+d[ch])/4;
+            nObj[`${x+1}#${y}`][ch] = Math.random()<.5?(a[ch]+avg)/2:(b[ch]+avg)/2;
+            nObj[`${x}#${y+1}`][ch] = Math.random()<.5?(a[ch]+avg)/2:(c[ch]+avg)/2;
+            nObj[`${x2}#${y+1}`][ch] = Math.random()<.5?(b[ch]+avg)/2:(d[ch]+avg)/2;
+            nObj[`${x+1}#${y2}`][ch] = Math.random()<.5?(c[ch]+avg)/2:(d[ch]+avg)/2;
+            nObj[`${x+1}#${y+1}`][ch] = Math.random()<.5?(Math.random()<.5?a[ch]:b[ch]):(Math.random()<.5?c[ch]:d[ch]);
+          }
+        }
+      }
+      pointObject = nObj;
+    };
+    const draw = () => {
+      const w = window.innerWidth, h = window.innerHeight;
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const cellW = Math.ceil(w/(nowMax+1)), cellH = Math.ceil(h/(nowMax+1));
+      for (const k in pointObject) {
+        const [px,py] = k.split('#').map(Number);
+        const pt = pointObject[k];
+        ctx.fillStyle = `rgb(${Math.round(pt.r*25+3)},${Math.round(pt.g*15+3)},${Math.round(pt.b*45+15)})`;
+        ctx.fillRect(px*cellW, py*cellH, cellW+1, cellH+1);
+      }
+      const grad = ctx.createRadialGradient(w*.5,h*.65,0,w*.5,h*.65,w*.55);
+      grad.addColorStop(0,'rgba(70,35,5,0.15)'); grad.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=grad; ctx.fillRect(0,0,w,h);
+    };
+    init(); for (let i=0;i<7;i++) doStep(); draw();
+    const onResize = () => draw();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return (
+    <canvas ref={canvasRef} style={{
+      position:'fixed',inset:0,width:'100%',height:'100%',
+      pointerEvents:'none',zIndex:0,opacity:0.2,
+      imageRendering:'pixelated',mixBlendMode:'screen' as any,
+    }} />
+  );
+};
+
+export const NightDivider: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <div className={`flex items-center gap-3 my-2 ${className}`}>
+    <div className="flex-1 h-px" style={{background:'linear-gradient(90deg,transparent,#3d2a14)'}}/>
+    <svg width="18" height="10" viewBox="0 0 18 10">
+      <path d="M9 0 L11 5 L9 10 L7 5 Z" fill="#5a3d1a" opacity="0.8"/>
+      <circle cx="9" cy="5" r="1.5" fill="#d4860a" opacity="0.7"/>
+    </svg>
+    <div className="flex-1 h-px" style={{background:'linear-gradient(90deg,#3d2a14,transparent)'}}/>
+  </div>
+);
+
+export const NightTorches: React.FC = () => (
+  <>
+    {([{l:'4%',d:'0s'},{l:'96%',d:'0.5s'}] as const).map((t,i)=>(
+      <div key={i} style={{
+        position:'fixed',top:'10%',left:t.l,transform:'translateX(-50%)',
+        pointerEvents:'none',zIndex:2,
+        animation:`torchFlicker 2.8s ${t.d} ease-in-out infinite`,
+      }}>
+        <svg width="12" height="28" viewBox="0 0 12 28">
+          <rect x="4" y="16" width="4" height="12" rx="1" fill="#3a1f08"/>
+          <ellipse cx="6" cy="14" rx="4" ry="6" fill="#e05010" opacity="0.75"/>
+          <ellipse cx="6" cy="11" rx="2.5" ry="4" fill="#f08030" opacity="0.65"/>
+          <ellipse cx="6" cy="9" rx="1.5" ry="2.5" fill="#ffe060" opacity="0.5"/>
+        </svg>
+      </div>
+    ))}
+  </>
+);
+
 interface HandDrawnProps {
   children: React.ReactNode;
   className?: string;
@@ -11,18 +112,23 @@ interface HandDrawnProps {
   strokeWidth?: number;
   roughness?: number;
   fillStyle?: 'hachure' | 'solid' | 'zigzag' | 'cross-hatch' | 'dots' | 'sunburst' | 'dashed';
+  style?: React.CSSProperties;
+  onClick?: React.MouseEventHandler<HTMLDivElement>;
 }
 
-export const HandDrawn: React.FC<HandDrawnProps> = ({
-  children,
-  className = '',
-  type = 'box',
-  fill = 'transparent',
-  stroke = 'currentColor',
-  strokeWidth = 1.5,
-  roughness = 1.5,
-  fillStyle = 'hachure',
-}) => {
+export const HandDrawn: React.FC<HandDrawnProps> = (props) => {
+  const {
+    children,
+    className = '',
+    type = 'box',
+    fill = 'transparent',
+    stroke = 'currentColor',
+    strokeWidth = 1.5,
+    roughness = 1.5,
+    fillStyle = 'hachure',
+    style,
+    onClick,
+  } = props;
   const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -68,18 +174,18 @@ export const HandDrawn: React.FC<HandDrawnProps> = ({
     return () => resizeObserver.disconnect();
   }, [theme, type, fill, stroke, strokeWidth, roughness]);
 
-  if (theme === 'default') {
-    return <div className={className}>{children}</div>;
+  if (theme === 'default' || theme === 'night') {
+    return <div className={className} style={style} onClick={onClick}>{children}</div>;
   }
 
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
+    <div ref={containerRef} className={`relative overflow-hidden ${className}`} style={style} onClick={onClick}>
       <canvas
         ref={canvasRef}
         className="absolute inset-0 pointer-events-none"
-        style={{ zIndex: 0 }}
+        style={{ zIndex: 0, display: 'block' }}
       />
-      <div className="relative z-10">{children}</div>
+      <div className="relative" style={{ zIndex: 1 }}>{children}</div>
     </div>
   );
 };
@@ -117,7 +223,7 @@ export const TornEdge: React.FC<{ position: 'top' | 'bottom'; className?: string
         </defs>
         <path 
           d="M0,0 L100,0 L100,10 Q50,20 0,10 Z" 
-          fill="#f2ead8" 
+          fill="#f0e6d0" 
           filter="url(#edge-wiggle)"
           className="drop-shadow-sm" 
         />
@@ -134,9 +240,9 @@ export const NotebookCorner: React.FC<{ className?: string }> = ({ className = '
     <div className={`absolute bottom-0 right-0 w-16 h-16 pointer-events-none z-30 ${className}`}>
       <svg width="100%" height="100%" viewBox="0 0 100 100">
         {/* Shadow of the fold */}
-        <path d="M100,0 L0,100 L100,100 Z" fill="rgba(0,0,0,0.1)" />
+        <path d="M100,0 L0,100 L100,100 Z" fill="rgba(0,0,0,0.12)" />
         {/* The folded paper */}
-        <path d="M100,0 L100,100 L0,100 Z" fill="#e8dec5" stroke="#d6c8a8" strokeWidth="1" />
+        <path d="M100,0 L100,100 L0,100 Z" fill="#e0d0b5" stroke="#c8b890" strokeWidth="1" />
       </svg>
     </div>
   );
@@ -204,95 +310,5 @@ export const Scribble: React.FC<{ className?: string }> = ({ className = '' }) =
         strokeDasharray="2 2"
       />
     </svg>
-  );
-};
-
-export const StandardFractalBackground: React.FC = () => {
-  const { theme } = useTheme();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    if (theme !== 'default' || !canvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animationFrameId: number;
-    let time = 0;
-
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-
-    window.addEventListener('resize', resize);
-    resize();
-
-    const drawLine = (x1: number, y1: number, x2: number, y2: number, color: string, width: number) => {
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width;
-      ctx.stroke();
-    };
-
-    const drawFractal = (x: number, y: number, length: number, angle: number, depth: number) => {
-      if (depth <= 0) return;
-
-      const x2 = x + length * Math.cos(angle);
-      const y2 = y + length * Math.sin(angle);
-
-      const alpha = depth / 10;
-      // Vibrant indigo/violet color with glow effect
-      const color = `rgba(99, 102, 241, ${alpha * 0.5})`; 
-      drawLine(x, y, x2, y2, color, depth * 0.4);
-
-      const newLength = length * 0.77;
-      const spread = 0.45 + Math.sin(time * 0.0006) * 0.15;
-      
-      drawFractal(x2, y2, newLength, angle - spread, depth - 1);
-      drawFractal(x2, y2, newLength, angle + spread, depth - 1);
-    };
-
-    const animate = () => {
-      time += 16;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      
-      const numSets = 3;
-      const baseLength = Math.min(canvas.width, canvas.height) * 0.18;
-      
-      for (let s = 0; s < numSets; s++) {
-        const offset = (s * Math.PI * 2) / numSets + time * 0.0001;
-        const numBranches = 3;
-        for (let i = 0; i < numBranches; i++) {
-          const rootAngle = (i * Math.PI * 2) / numBranches + offset;
-          drawFractal(centerX, centerY, baseLength, rootAngle, 9);
-        }
-      }
-      
-      animationFrameId = requestAnimationFrame(animate);
-    };
-
-    animate();
-
-    return () => {
-      window.removeEventListener('resize', resize);
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [theme]);
-
-  if (theme !== 'default') return null;
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 pointer-events-none opacity-30"
-      style={{ zIndex: 0 }}
-    />
   );
 };

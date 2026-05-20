@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Special+Elite&family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;900&family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@400;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
+@import "./night-theme.css";
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'La Meute Furieuse';
+  src: url('./fonts/La Meute Furieuse.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Sticky Puding';
+  src: url('./fonts/Sticky Puding.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KG Perfect Penmanship';
+  src: url('./fonts/KGPerfectPenmanship.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: "Sticky Puding", "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "La Meute Furieuse", "Outfit", sans-serif;
+  --font-chat: "Caveat", cursive;
+  --font-typewriter: "Special Elite", system-ui, serif;
+}
+
+@layer utilities {
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+  .backface-hidden {
+    backface-visibility: hidden;
+  }
+  .rotate-y-180 {
+    transform: rotateY(180deg);
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  @keyframes torchFlicker {
+    0%, 100% { opacity: 0.65; transform: translateX(-50%) scaleX(1); }
+    20%       { opacity: 0.85; transform: translateX(-50%) scaleX(1.04); }
+    45%       { opacity: 0.55; transform: translateX(-50%) scaleX(0.96); }
+    70%       { opacity: 0.80; transform: translateX(-50%) scaleX(1.03); }
+  }
+
+  .watercolor-bg {
+    background-color: #f0e6d0;
+    background-image:
+      /* Vertical margin line */
+      linear-gradient(90deg, transparent 64px, #c8a0a8 64px, #c8a0a8 65.5px, transparent 65.5px),
+      /* Horizontal ruled lines */
+      repeating-linear-gradient(
+        180deg,
+        transparent 0px,
+        transparent 27px,
+        rgba(160,130,100,0.25) 27px,
+        rgba(160,130,100,0.25) 28px
+      );
+    position: relative;
+  }
+
+  /* Aged paper texture overlay */
+  .watercolor-bg::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 300 300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.09;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    z-index: 0;
+  }
+
+  /* Coffee stain vignette */
+  .watercolor-bg::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 5% 5%, rgba(160,110,60,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 95% 95%, rgba(140,90,50,0.07) 0%, transparent 55%),
+      radial-gradient(ellipse 100% 100% at 50% 50%, transparent 60%, rgba(120,80,40,0.06) 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+}

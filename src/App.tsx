@@ -10,7 +10,7 @@ import Lobby from './components/Lobby';
 import GameView from './components/GameView';
 import { motion, AnimatePresence } from 'motion/react';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
-import { SketchyFilters } from './components/ThemeManager';
+import { SketchyFilters, StandardFractalBackground } from './components/ThemeManager';
 import { Paintbrush, Layout } from 'lucide-react';
 
 function ThemeSelector() {
@@ -65,6 +65,7 @@ function MainContent() {
         : 'bg-slate-950 text-slate-100 selection:bg-indigo-500/30 selection:text-indigo-200'
     }`}>
       <SketchyFilters />
+      <StandardFractalBackground />
       <ThemeSelector />
       <AnimatePresence mode="wait">
         {!gameId ? (

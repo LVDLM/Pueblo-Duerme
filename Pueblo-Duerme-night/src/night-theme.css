@@ -1,0 +1,457 @@
+/* ============================================================
+   NIGHT THEME — Pueblo Duerme
+   Estética: aldea medieval oscura, pergamino envejecido,
+   fuego de antorcha, madera quemada.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@400;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400;1,600&display=swap');
+
+/* ---- Variables de color ---- */
+:root {
+  --night-bg:        #0d0a07;
+  --night-surface:   #130f09;
+  --night-card:      #1c150d;
+  --night-border:    #3d2a14;
+  --night-border2:   #5a3d1a;
+  --night-amber:     #d4860a;
+  --night-amber-dim: #7a4d06;
+  --night-red:       #9b2020;
+  --night-red-glow:  rgba(155,32,32,0.35);
+  --night-text:      #e8d5b0;
+  --night-text-dim:  #8a7050;
+  --night-text-mute: #4a3520;
+  --night-paper:     #1e160d;
+  --night-ink:       #c8a870;
+  --night-wolf:      #7a1515;
+  --night-moon:      #d4c090;
+  --night-fog:       rgba(180,140,80,0.04);
+  --night-fire1:     #ff6b1a;
+  --night-fire2:     #d4860a;
+}
+
+/* ---- Clase raíz del tema ---- */
+.theme-night {
+  background-color: var(--night-bg);
+  color: var(--night-text);
+  font-family: 'Crimson Text', Georgia, serif;
+}
+
+/* ---- Textura de fondo: tablones de madera + fractal ---- */
+.night-bg {
+  background-color: var(--night-bg);
+  background-image:
+    repeating-linear-gradient(
+      87deg,
+      transparent 0px,
+      transparent 28px,
+      rgba(255,200,80,0.015) 28px,
+      rgba(255,200,80,0.015) 29px
+    ),
+    repeating-linear-gradient(
+      92deg,
+      transparent 0px,
+      transparent 60px,
+      rgba(255,200,80,0.008) 60px,
+      rgba(255,200,80,0.008) 61px
+    );
+  position: relative;
+}
+
+.night-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 300 300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.06;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 0;
+}
+
+/* ---- Canvas fractal animado (fondo de noche) ---- */
+#night-fractal-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.18;
+  image-rendering: pixelated;
+  mix-blend-mode: screen;
+}
+
+/* ---- Vignette de niebla ---- */
+.night-vignette {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.75) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---- Superficie / panel ---- */
+.night-panel {
+  background: var(--night-card);
+  border: 1px solid var(--night-border);
+  position: relative;
+}
+
+.night-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(212,134,10,0.08);
+  pointer-events: none;
+}
+
+/* ---- Borde de pergamino (marco interior decorativo) ---- */
+.night-parchment {
+  background: var(--night-paper);
+  border: 1px solid var(--night-border);
+  box-shadow:
+    inset 0 0 40px rgba(0,0,0,0.6),
+    inset 0 0 4px rgba(212,134,10,0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.night-parchment::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.07'/%3E%3C/svg%3E");
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  opacity: 0.5;
+}
+
+/* ---- Título principal ---- */
+.night-title {
+  font-family: 'Cinzel Decorative', serif;
+  font-weight: 700;
+  color: var(--night-amber);
+  text-shadow:
+    0 0 30px rgba(212,134,10,0.4),
+    0 0 60px rgba(212,134,10,0.15);
+  letter-spacing: 0.05em;
+}
+
+.night-title span {
+  color: var(--night-red);
+  text-shadow:
+    0 0 20px rgba(155,32,32,0.5),
+    0 0 50px rgba(155,32,32,0.2);
+}
+
+/* ---- Subtítulo / etiquetas ---- */
+.night-label {
+  font-family: 'Cinzel', serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--night-text-dim);
+}
+
+/* ---- Texto cuerpo ---- */
+.night-body {
+  font-family: 'Crimson Text', Georgia, serif;
+  color: var(--night-text);
+  line-height: 1.65;
+}
+
+/* ---- Botón primario: brasa encendida ---- */
+.night-btn-primary {
+  background: linear-gradient(135deg, #7a2a0a 0%, #3d1005 100%);
+  border: 1px solid var(--night-red);
+  color: var(--night-text);
+  font-family: 'Cinzel', serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.night-btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,107,26,0.1) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.night-btn-primary:hover {
+  border-color: var(--night-fire1);
+  box-shadow: 0 0 20px rgba(155,32,32,0.4), 0 0 40px rgba(155,32,32,0.15);
+  color: #fff;
+}
+
+.night-btn-primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ---- Botón secundario: madera oscura ---- */
+.night-btn-secondary {
+  background: var(--night-card);
+  border: 1px solid var(--night-border2);
+  color: var(--night-text-dim);
+  font-family: 'Cinzel', serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  transition: all 0.25s ease;
+}
+
+.night-btn-secondary:hover {
+  border-color: var(--night-amber);
+  color: var(--night-amber);
+}
+
+/* ---- Input de texto ---- */
+.night-input {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--night-border);
+  color: var(--night-text);
+  font-family: 'Crimson Text', Georgia, serif;
+  font-size: 1.1rem;
+  transition: border-color 0.25s ease;
+}
+
+.night-input::placeholder {
+  color: var(--night-text-mute);
+  font-style: italic;
+}
+
+.night-input:focus {
+  outline: none;
+  border-color: var(--night-amber-dim);
+  box-shadow: 0 0 15px rgba(212,134,10,0.1);
+}
+
+/* ---- Tarjeta de jugador ---- */
+.night-player-card {
+  background: var(--night-card);
+  border: 1px solid var(--night-border);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.night-player-card:hover {
+  border-color: var(--night-border2);
+}
+
+.night-player-card.active-target {
+  border-color: var(--night-red);
+  box-shadow: 0 0 15px var(--night-red-glow), inset 0 0 20px rgba(155,32,32,0.08);
+}
+
+.night-player-card.dead {
+  opacity: 0.35;
+  filter: grayscale(80%) sepia(20%);
+}
+
+/* ---- Badge de fase ---- */
+.night-phase-badge {
+  background: linear-gradient(135deg, #3d1005, #200800);
+  border: 1px solid var(--night-red);
+  color: #e8b090;
+  font-family: 'Cinzel', serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  box-shadow: 0 0 12px rgba(155,32,32,0.3);
+}
+
+/* ---- Chat bubble ---- */
+.night-chat-public {
+  background: rgba(30,22,13,0.8);
+  border-left: 2px solid var(--night-border2);
+  color: var(--night-text);
+  font-family: 'Crimson Text', Georgia, serif;
+  font-size: 1rem;
+}
+
+.night-chat-wolf {
+  background: rgba(50,8,8,0.6);
+  border-left: 2px solid var(--night-wolf);
+  color: #e8a0a0;
+  font-family: 'Crimson Text', Georgia, serif;
+}
+
+.night-chat-narrator {
+  background: rgba(40,28,8,0.7);
+  border-left: 2px solid var(--night-amber-dim);
+  color: var(--night-moon);
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+}
+
+/* ---- Divisor de pergamino ---- */
+.night-divider {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--night-border2) 30%, var(--night-border2) 70%, transparent);
+  position: relative;
+}
+
+.night-divider::after {
+  content: '✦';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--night-amber-dim);
+  font-size: 0.6rem;
+  background: var(--night-bg);
+  padding: 0 6px;
+}
+
+/* ---- Brillo de antorcha pulsante ---- */
+@keyframes torchFlicker {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  25%       { opacity: 0.8; transform: scale(1.03); }
+  50%       { opacity: 0.5; transform: scale(0.97); }
+  75%       { opacity: 0.75; transform: scale(1.02); }
+}
+
+.night-torch-glow {
+  animation: torchFlicker 3s ease-in-out infinite;
+}
+
+/* ---- Indicador de fase con glow ---- */
+@keyframes pulseRed {
+  0%, 100% { box-shadow: 0 0 4px rgba(155,32,32,0.5); }
+  50%       { box-shadow: 0 0 12px rgba(155,32,32,0.9); }
+}
+
+.night-pulse-red {
+  animation: pulseRed 2s ease-in-out infinite;
+}
+
+/* ---- Barras de progreso de voto (como marcas en madera) ---- */
+.night-vote-bar {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--night-red) 0px,
+    var(--night-red) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+  height: 8px;
+}
+
+/* ---- Código de partida ---- */
+.night-code {
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.35em;
+  color: var(--night-amber);
+  text-shadow: 0 0 10px rgba(212,134,10,0.3);
+}
+
+/* ---- Scrollbar oscura ---- */
+.night-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.night-scroll::-webkit-scrollbar-track {
+  background: var(--night-bg);
+}
+.night-scroll::-webkit-scrollbar-thumb {
+  background: var(--night-border2);
+  border-radius: 2px;
+}
+.night-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--night-amber-dim);
+}
+
+/* ---- Ornamentos SVG inline ---- */
+.night-ornament {
+  color: var(--night-amber-dim);
+  opacity: 0.5;
+}
+
+/* ---- Carta boca abajo (dorso) en la noche ---- */
+.night-card-back {
+  background: linear-gradient(135deg, #1a0a0a 0%, #0d0507 100%);
+  border: 1px solid var(--night-border);
+}
+
+/* ---- Efecto hover en tarjetas de jugador ---- */
+.night-player-card:hover .night-player-name {
+  color: var(--night-amber);
+}
+
+/* ---- Píldora "Tú" ---- */
+.night-you-badge {
+  background: var(--night-red);
+  color: #ffe8d0;
+  font-family: 'Cinzel', serif;
+  font-size: 0.5rem;
+  letter-spacing: 0.15em;
+}
+
+/* ---- Moderador badge ---- */
+.night-mod-badge {
+  background: transparent;
+  border: 1px solid var(--night-amber-dim);
+  color: var(--night-amber);
+  font-family: 'Cinzel', serif;
+  font-size: 0.5rem;
+  letter-spacing: 0.12em;
+}
+
+/* ---- Narración central ---- */
+.night-narration {
+  background: rgba(13,10,7,0.7);
+  border: 1px solid var(--night-border);
+  border-top: 2px solid var(--night-amber-dim);
+}
+
+.night-narration-text {
+  font-family: 'Crimson Text', Georgia, serif;
+  font-style: italic;
+  font-size: 1.15rem;
+  color: var(--night-text);
+  line-height: 1.7;
+}
+
+/* ---- Winner banner ---- */
+.night-winner-wolf {
+  background: linear-gradient(135deg, #2a0505, #150202);
+  border: 1px solid var(--night-red);
+  box-shadow: 0 0 40px rgba(155,32,32,0.3);
+}
+
+.night-winner-village {
+  background: linear-gradient(135deg, #0a1a0a, #051005);
+  border: 1px solid #2a5a2a;
+  box-shadow: 0 0 40px rgba(42,90,42,0.3);
+}
+
+/* ---- Dev mode badge ---- */
+.night-dev-badge {
+  background: rgba(80,40,0,0.5);
+  border: 1px solid var(--night-amber-dim);
+  color: var(--night-amber);
+  font-family: 'Cinzel', serif;
+  font-size: 0.55rem;
+}
+
+/* ---- Bruma animada de fondo ---- */
+@keyframes driftFog {
+  0%   { transform: translateX(0)   translateY(0); opacity: 0.03; }
+  50%  { transform: translateX(30px) translateY(-15px); opacity: 0.06; }
+  100% { transform: translateX(0)   translateY(0); opacity: 0.03; }
+}
+
+.night-fog-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(ellipse 80% 50% at 20% 60%, rgba(212,134,10,0.04) 0%, transparent 70%),
+              radial-gradient(ellipse 60% 40% at 80% 30%, rgba(155,32,32,0.03) 0%, transparent 60%);
+  animation: driftFog 12s ease-in-out infinite;
+}
